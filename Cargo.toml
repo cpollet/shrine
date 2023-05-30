@@ -1,0 +1,14 @@
+[package]
+name = "grave"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[lib]
+name = "grave"
+path = "src/lib.rs"
+
+[[bin]]
+name = "grave"
+path = "src/cli.rs"
