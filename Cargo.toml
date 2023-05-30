@@ -1,14 +1,14 @@
 [package]
-name = "grave"
+name = "shrine"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 
 [lib]
-name = "grave"
+name = "shrine"
 path = "src/lib.rs"
 
 [[bin]]
-name = "grave"
+name = "shrine"
 path = "src/cli.rs"

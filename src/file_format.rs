@@ -37,7 +37,7 @@ impl ShrineFile {
 /// Builds a default `ShrineFile`.
 ///
 /// ```
-/// # use crate::grave::file_format::{EncryptionAlgorithm, SerializationFormat, ShrineFile};
+/// use crate::shrine::file_format::{EncryptionAlgorithm, SerializationFormat, ShrineFile};
 /// let file = ShrineFile::default();
 /// assert_eq!(file.is_valid(), true);
 /// assert_eq!(file.version(), 0);
