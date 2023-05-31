@@ -5,15 +5,16 @@ use thiserror::Error;
 const VERSION: u8 = 0;
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
-pub struct ShrineFile {
+pub struct ShrineFile<'a> {
     /// Always "shrine".
     magic_number: [u8; 6],
     metadata: Metadata,
     /// The serialized then encrypted payload.
-    payload: Vec<u8>,
+    #[borsh_skip]
+    payload: &'a [u8],
 }
 
-impl ShrineFile {
+impl<'a> ShrineFile<'a> {
     pub fn version(&self) -> u8 {
         self.metadata.version()
     }
@@ -27,7 +28,7 @@ impl ShrineFile {
     }
 
     pub fn payload(&self) -> &[u8] {
-        self.payload.as_slice()
+        self.payload
     }
 
     /// Serializes the `ShrineFile`.
@@ -37,13 +38,14 @@ impl ShrineFile {
     /// let file = ShrineFile::default();
     /// assert_eq!(
     ///     file.as_bytes().unwrap().len() as u64,
-    ///     13
+    ///     9
     /// );
     /// ```
     pub fn as_bytes(&self) -> Result<Vec<u8>, FileFormatError> {
         let mut buffer = Vec::new();
         self.serialize(&mut buffer)
             .map_err(|e| FileFormatError::Serialization(e))?;
+        buffer.extend_from_slice(self.payload);
         Ok(buffer)
     }
 
@@ -59,7 +61,7 @@ impl ShrineFile {
     ///     bytes
     /// );
     /// ```
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, FileFormatError> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Result<Self, FileFormatError> {
         if &bytes[0..6] != "shrine".as_bytes() || bytes.len() < 7 {
             return Err(FileFormatError::InvalidFile);
         }
@@ -68,7 +70,13 @@ impl ShrineFile {
             return Err(FileFormatError::UnsupportedVersion(bytes[6]));
         }
 
-        Self::try_from_slice(bytes).map_err(|e| FileFormatError::Deserialization(e))
+        let mut bytes = bytes;
+        let mut file =
+            Self::deserialize(&mut bytes).map_err(|e| FileFormatError::Deserialization(e))?;
+
+        file.payload = bytes;
+
+        Ok(file)
     }
 }
 
@@ -82,12 +90,12 @@ impl ShrineFile {
 /// assert_eq!(file.serialization_format(), SerializationFormat::Bson);
 /// assert_eq!(file.payload().len(), 0);
 ///```
-impl Default for ShrineFile {
+impl<'a> Default for ShrineFile<'a> {
     fn default() -> Self {
         Self {
             magic_number: [b's', b'h', b'r', b'i', b'n', b'e'],
             metadata: Metadata::default(),
-            payload: Vec::default(),
+            payload: &[],
         }
     }
 }
