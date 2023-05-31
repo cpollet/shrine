@@ -53,6 +53,7 @@ mod tests {
     use crate::serialize::message_pack::MessagePackSerDe;
     use crate::serialize::SerDe;
     use crate::shrine::Shrine;
+    use secrecy::ExposeSecret;
 
     #[test]
     fn serde() {
@@ -64,6 +65,9 @@ mod tests {
         let bytes = serde.serialize(&shrine).unwrap();
         let shrine = serde.deserialize(bytes.as_slice()).unwrap();
 
-        assert_eq!("val", shrine.get("key").unwrap())
+        assert_eq!(
+            "val".as_bytes(),
+            shrine.get("key").unwrap().expose_secret().as_ref()
+        )
     }
 }

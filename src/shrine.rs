@@ -1,5 +1,9 @@
+use crate::bytes::{Bytes, SecretBytes};
 use crate::serialize::{Error, SerDe};
-use bytes::Bytes;
+
+
+
+use secrecy::{Secret};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -7,9 +11,9 @@ use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Default)]
 pub struct Shrine {
     /// Secrets and data private to the shrine.
-    private: HashMap<String, Bytes>,
+    private: HashMap<String, SecretBytes>,
     /// Actual user-defined secrets.
-    secrets: HashMap<String, Bytes>,
+    secrets: HashMap<String, SecretBytes>,
 }
 
 impl Shrine {
@@ -23,11 +27,11 @@ impl Shrine {
         K: Into<String>,
         V: Into<Bytes>,
     {
-        self.secrets.insert(key.into(), value.into());
+        self.secrets.insert(key.into(), Secret::new(value.into()));
     }
 
     /// Gets a secret's value
-    pub fn get<'k, K>(&self, key: K) -> Option<&Bytes>
+    pub fn get<'k, K>(&self, key: K) -> Option<&SecretBytes>
     where
         K: Into<&'k str>,
     {
