@@ -8,27 +8,22 @@ const VERSION: u8 = 0;
 pub struct ShrineFile {
     /// Always "shrine".
     magic_number: [u8; 6],
-    /// The shrine file format version.
-    version: u8,
-    /// The algorithm used to encrypt the payload.
-    encryption_algorithm: EncryptionAlgorithm,
-    /// The serialization format used to serialize the payload.
-    serialization_format: SerializationFormat,
+    metadata: Metadata,
     /// The serialized then encrypted payload.
     payload: Vec<u8>,
 }
 
 impl ShrineFile {
     pub fn version(&self) -> u8 {
-        self.version
+        self.metadata.version()
     }
 
     pub fn encryption_algorithm(&self) -> EncryptionAlgorithm {
-        self.encryption_algorithm
+        self.metadata.encryption_algorithm()
     }
 
     pub fn serialization_format(&self) -> SerializationFormat {
-        self.serialization_format
+        self.metadata.serialization_format()
     }
 
     pub fn payload(&self) -> &[u8] {
@@ -65,17 +60,15 @@ impl ShrineFile {
     /// );
     /// ```
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, FileFormatError> {
-        let file = Self::try_from_slice(bytes).map_err(|e| FileFormatError::Deserialization(e))?;
-
-        if file.magic_number.as_slice() != "shrine".as_bytes() {
+        if &bytes[0..6] != "shrine".as_bytes() || bytes.len() < 7 {
             return Err(FileFormatError::InvalidFile);
         }
 
-        if file.version > VERSION {
-            return Err(FileFormatError::UnsupportedVersion(file.version));
+        if bytes[6] > VERSION {
+            return Err(FileFormatError::UnsupportedVersion(bytes[6]));
         }
 
-        Ok(file)
+        Self::try_from_slice(bytes).map_err(|e| FileFormatError::Deserialization(e))
     }
 }
 
@@ -93,10 +86,53 @@ impl Default for ShrineFile {
     fn default() -> Self {
         Self {
             magic_number: [b's', b'h', b'r', b'i', b'n', b'e'],
-            version: 0,
+            metadata: Metadata::default(),
+            payload: Vec::default(),
+        }
+    }
+}
+
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
+enum Metadata {
+    V0 {
+        /// The algorithm used to encrypt the payload.
+        encryption_algorithm: EncryptionAlgorithm,
+        /// The serialization format used to serialize the payload.
+        serialization_format: SerializationFormat,
+    },
+}
+
+impl Metadata {
+    fn version(&self) -> u8 {
+        match self {
+            Metadata::V0 { .. } => 0,
+        }
+    }
+
+    fn encryption_algorithm(&self) -> EncryptionAlgorithm {
+        match self {
+            Metadata::V0 {
+                encryption_algorithm,
+                ..
+            } => encryption_algorithm.clone(),
+        }
+    }
+
+    fn serialization_format(&self) -> SerializationFormat {
+        match self {
+            Metadata::V0 {
+                serialization_format,
+                ..
+            } => serialization_format.clone(),
+        }
+    }
+}
+
+impl Default for Metadata {
+    fn default() -> Self {
+        Self::V0 {
             encryption_algorithm: EncryptionAlgorithm::default(),
             serialization_format: SerializationFormat::default(),
-            payload: Vec::default(),
         }
     }
 }
