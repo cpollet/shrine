@@ -43,7 +43,7 @@ impl ShrineFile {
     pub fn as_bytes(&self) -> Result<Vec<u8>, FileFormatError> {
         let mut buffer = Vec::new();
         self.serialize(&mut buffer)
-            .map_err(|e| FileFormatError::Serialization(e))?;
+            .map_err(FileFormatError::Serialization)?;
         Ok(buffer)
     }
 
@@ -68,7 +68,7 @@ impl ShrineFile {
             return Err(FileFormatError::UnsupportedVersion(bytes[6]));
         }
 
-        Self::try_from_slice(bytes).map_err(|e| FileFormatError::Deserialization(e))
+        Self::try_from_slice(bytes).map_err(FileFormatError::Deserialization)
     }
 }
 
@@ -114,7 +114,7 @@ impl Metadata {
             Metadata::V0 {
                 encryption_algorithm,
                 ..
-            } => encryption_algorithm.clone(),
+            } => *encryption_algorithm,
         }
     }
 
@@ -123,7 +123,7 @@ impl Metadata {
             Metadata::V0 {
                 serialization_format,
                 ..
-            } => serialization_format.clone(),
+            } => *serialization_format,
         }
     }
 }
@@ -178,7 +178,7 @@ mod tests {
 
         let file = ShrineFile::from_bytes(bytes.as_slice());
 
-        assert_eq!(file.is_err(), true);
+        assert!(file.is_err());
         assert_eq!(
             file.unwrap_err().to_string(),
             "the provided file is not a valid shrine archive"
@@ -192,7 +192,7 @@ mod tests {
 
         let file = ShrineFile::from_bytes(bytes.as_slice());
 
-        assert_eq!(file.is_err(), true);
+        assert!(file.is_err());
         assert_eq!(
             file.unwrap_err().to_string(),
             format!(
