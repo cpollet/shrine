@@ -1,11 +1,10 @@
-use bincode::{DefaultOptions, Options};
-use serde::{Deserialize, Serialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use thiserror::Error;
 
 /// Max supported file version
 const VERSION: u8 = 0;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub struct ShrineFile {
     /// Always "shrine".
     magic_number: [u8; 6],
@@ -39,21 +38,18 @@ impl ShrineFile {
     /// Serializes the `ShrineFile`.
     ///
     /// ```
-    /// # use bincode::Options;
     /// # use shrine::file_format::ShrineFile;
     /// let file = ShrineFile::default();
     /// assert_eq!(
     ///     file.as_bytes().unwrap().len() as u64,
-    ///     bincode::DefaultOptions::new()
-    ///         .with_big_endian()
-    ///         .serialized_size(&file)
-    ///         .unwrap()
+    ///     13
     /// );
     /// ```
     pub fn as_bytes(&self) -> Result<Vec<u8>, FileFormatError> {
-        DefaultOptions::new()
-            .serialize(&self)
-            .map_err(|e| FileFormatError::Serialization(e))
+        let mut buffer = Vec::new();
+        self.serialize(&mut buffer)
+            .map_err(|e| FileFormatError::Serialization(e))?;
+        Ok(buffer)
     }
 
     /// Deserializes a slice of bytes into a `ShrineFile`.
@@ -69,9 +65,7 @@ impl ShrineFile {
     /// );
     /// ```
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, FileFormatError> {
-        let file = DefaultOptions::new()
-            .deserialize::<Self>(bytes.into())
-            .map_err(|e| FileFormatError::Deserialization(e))?;
+        let file = Self::try_from_slice(bytes).map_err(|e| FileFormatError::Deserialization(e))?;
 
         if file.magic_number.as_slice() != "shrine".as_bytes() {
             return Err(FileFormatError::InvalidFile);
@@ -108,7 +102,7 @@ impl Default for ShrineFile {
 }
 
 /// The list of encryption algorithms used to encrypt the payload.
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum EncryptionAlgorithm {
     /// No encryption
     #[default]
@@ -116,7 +110,7 @@ pub enum EncryptionAlgorithm {
 }
 
 /// The serialization format
-#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum SerializationFormat {
     /// BSON, the data storage and network transfer format used by MongoDB.
     #[default]
@@ -128,9 +122,9 @@ pub enum SerializationFormat {
 #[derive(Error, Debug)]
 pub enum FileFormatError {
     #[error("could not serialize shrine file content: {0}")]
-    Serialization(bincode::Error),
+    Serialization(std::io::Error),
     #[error("could not deserialize shrine file: {0}")]
-    Deserialization(bincode::Error),
+    Deserialization(std::io::Error),
     #[error("the provided file is not a valid shrine archive")]
     InvalidFile,
     #[error("the provided file version {0} is not supported (max {})", VERSION)]
@@ -139,7 +133,7 @@ pub enum FileFormatError {
 
 #[cfg(test)]
 mod tests {
-    use crate::file_format::{FileFormatError, ShrineFile, VERSION};
+    use crate::file_format::{ShrineFile, VERSION};
 
     #[test]
     fn invalid_magic_number() {
