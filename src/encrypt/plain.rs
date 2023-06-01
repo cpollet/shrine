@@ -1,4 +1,4 @@
-use crate::encrypt::EncDec;
+use crate::encrypt::{EncDec, Error};
 
 #[derive(Default)]
 pub struct Plain {}
@@ -10,11 +10,11 @@ impl Plain {
 }
 
 impl EncDec for Plain {
-    fn encrypt(&self, clear: &[u8]) -> Vec<u8> {
-        clear.to_vec()
+    fn encrypt(&self, cleartext: &[u8]) -> Result<Vec<u8>, Error> {
+        Ok(cleartext.to_vec())
     }
 
-    fn decrypt(&self, cipher: &[u8]) -> Vec<u8> {
-        cipher.to_vec()
+    fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
+        Ok(ciphertext.to_vec())
     }
 }

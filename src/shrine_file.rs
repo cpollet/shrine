@@ -1,11 +1,17 @@
+use crate::encrypt::aes::Aes;
 use crate::encrypt::plain::Plain;
 use crate::encrypt::EncDec;
 use crate::serialize::bson::BsonSerDe;
 use crate::serialize::json::JsonSerDe;
 use crate::serialize::message_pack::MessagePackSerDe;
-use crate::serialize::{Error, SerDe};
+use crate::serialize::SerDe;
 use crate::shrine::Shrine;
+use std::fmt::{Display, Formatter};
+
 use borsh::{BorshDeserialize, BorshSerialize};
+
+use secrecy::Secret;
+
 use thiserror::Error;
 
 /// Max supported file version
@@ -90,14 +96,15 @@ impl ShrineFile {
             .serialize(&shrine)
         {
             Ok(bytes) => bytes,
-            Err(e) => return Err(e),
+            Err(e) => return Err(Error::Write(e.to_string())),
         };
 
         let bytes = self
             .metadata
             .encryption_algorithm()
             .encryptor()
-            .encrypt(&bytes);
+            .encrypt(&bytes)
+            .map_err(|e| Error::Write(e.to_string()))?;
 
         self.payload = bytes;
 
@@ -110,12 +117,14 @@ impl ShrineFile {
             .metadata
             .encryption_algorithm()
             .encryptor()
-            .decrypt(&self.payload);
+            .decrypt(&self.payload)
+            .map_err(|e| Error::Read(e.to_string()))?;
 
         self.metadata
             .serialization_format()
             .serializer()
             .deserialize(&bytes)
+            .map_err(|e| Error::Read(e.to_string()))
     }
 }
 
@@ -125,7 +134,7 @@ impl ShrineFile {
 /// # use crate::shrine::shrine_file::{EncryptionAlgorithm, SerializationFormat, ShrineFile};
 /// let file = ShrineFile::default();
 /// assert_eq!(file.version(), 0);
-/// assert_eq!(file.encryption_algorithm(), EncryptionAlgorithm::Plain);
+/// assert_eq!(file.encryption_algorithm(), EncryptionAlgorithm::Aes);
 /// assert_eq!(file.serialization_format(), SerializationFormat::Bson);
 ///```
 impl Default for ShrineFile {
@@ -186,14 +195,21 @@ impl Default for Metadata {
 /// The list of encryption algorithms used to encrypt the payload.
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum EncryptionAlgorithm {
-    /// No encryption
+    /// AES-GCM-SIV encryption
     #[default]
+    Aes,
+    /// No encryption
     Plain,
 }
 
 impl EncryptionAlgorithm {
     fn encryptor(&self) -> Box<dyn EncDec> {
         match self {
+            EncryptionAlgorithm::Aes => {
+                // FIXME (#2): use the previous commit hash and repo remote as the AAD
+                //  something similar to https://github.com/cpollet/shrine.git#ae9ef36cc813d90a47c13315158f8dc3f87ee81e
+                Box::new(Aes::new(Secret::new("password".to_string()), None))
+            }
             EncryptionAlgorithm::Plain => Box::new(Plain::new()),
         }
     }
@@ -259,6 +275,18 @@ impl ShrineFileBuilder {
             encryption_algorithm: self.encryption_algorithm,
             serialization_format: self.serialization_format,
         })
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    Read(String),
+    Write(String),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
