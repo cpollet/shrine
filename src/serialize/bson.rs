@@ -41,16 +41,18 @@ where
                     .unwrap()
                     .as_bytes()
                     .to_vec()),
-                _ => Err(Error::Serialization),
+                _ => Err(Error::Serialization(
+                    "Unexpected Bson alternative".to_string(),
+                )),
             },
-            Err(_) => Err(Error::Serialization),
+            Err(e) => Err(Error::Serialization(e.to_string())),
         }
     }
 
     fn deserialize(&self, bytes: &[u8]) -> Result<D, Error> {
         match bson::from_slice::<D>(bytes) {
             Ok(data) => Ok(data),
-            Err(_) => Err(Error::Deserialization),
+            Err(e) => Err(Error::Deserialization(e.to_string())),
         }
     }
 }

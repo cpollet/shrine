@@ -18,8 +18,8 @@ where
 
 #[derive(Debug, Error)]
 pub enum Error {
-    Serialization,
-    Deserialization,
+    Serialization(String),
+    Deserialization(String),
 }
 
 impl Display for Error {

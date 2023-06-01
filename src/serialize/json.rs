@@ -36,14 +36,14 @@ where
     fn serialize(&self, data: &D) -> Result<Vec<u8>, Error> {
         match serde_json::to_vec(data) {
             Ok(bytes) => Ok(bytes),
-            Err(_) => Err(Error::Serialization),
+            Err(e) => Err(Error::Serialization(e.to_string())),
         }
     }
 
     fn deserialize(&self, bytes: &[u8]) -> Result<D, Error> {
         match serde_json::from_slice::<D>(bytes) {
             Ok(data) => Ok(data),
-            Err(_) => Err(Error::Deserialization),
+            Err(e) => Err(Error::Deserialization(e.to_string())),
         }
     }
 }
