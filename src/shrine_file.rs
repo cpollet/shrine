@@ -1,3 +1,10 @@
+use crate::encrypt::plain::Plain;
+use crate::encrypt::EncDec;
+use crate::serialize::bson::BsonSerDe;
+use crate::serialize::json::JsonSerDe;
+use crate::serialize::message_pack::MessagePackSerDe;
+use crate::serialize::{Error, SerDe};
+use crate::shrine::Shrine;
 use borsh::{BorshDeserialize, BorshSerialize};
 use thiserror::Error;
 
@@ -14,6 +21,13 @@ pub struct ShrineFile {
 }
 
 impl ShrineFile {
+    fn new(metadata: Metadata) -> Self {
+        Self {
+            metadata,
+            ..Default::default()
+        }
+    }
+
     pub fn version(&self) -> u8 {
         self.metadata.version()
     }
@@ -26,14 +40,10 @@ impl ShrineFile {
         self.metadata.serialization_format()
     }
 
-    pub fn payload(&self) -> &[u8] {
-        self.payload.as_slice()
-    }
-
     /// Serializes the `ShrineFile`.
     ///
     /// ```
-    /// # use shrine::file_format::ShrineFile;
+    /// # use shrine::shrine_file::ShrineFile;
     /// let file = ShrineFile::default();
     /// assert_eq!(
     ///     file.as_bytes().unwrap().len() as u64,
@@ -50,7 +60,7 @@ impl ShrineFile {
     /// Deserializes a slice of bytes into a `ShrineFile`.
     ///
     /// ```
-    /// # use shrine::file_format::ShrineFile;
+    /// # use shrine::shrine_file::ShrineFile;
     /// # let bytes = ShrineFile::default().as_bytes().unwrap();
     /// # let bytes = bytes.as_slice();
     /// let file = ShrineFile::from_bytes(bytes).unwrap();
@@ -70,17 +80,53 @@ impl ShrineFile {
 
         Self::try_from_slice(bytes).map_err(FileFormatError::Deserialization)
     }
+
+    /// Wraps a `Shrine` inside of a `ShrineFile`.
+    pub fn wrap(&mut self, shrine: Shrine) -> Result<(), Error> {
+        let bytes = match self
+            .metadata
+            .serialization_format()
+            .serializer()
+            .serialize(&shrine)
+        {
+            Ok(bytes) => bytes,
+            Err(e) => return Err(e),
+        };
+
+        let bytes = self
+            .metadata
+            .encryption_algorithm()
+            .encryptor()
+            .encrypt(&bytes);
+
+        self.payload = bytes;
+
+        Ok(())
+    }
+
+    /// Unwraps the `Shrine` from the `ShrineFile`.
+    pub fn unwrap(&self) -> Result<Shrine, Error> {
+        let bytes = self
+            .metadata
+            .encryption_algorithm()
+            .encryptor()
+            .decrypt(&self.payload);
+
+        self.metadata
+            .serialization_format()
+            .serializer()
+            .deserialize(&bytes)
+    }
 }
 
 /// Builds a default `ShrineFile`.
 ///
 /// ```
-/// # use crate::shrine::file_format::{EncryptionAlgorithm, SerializationFormat, ShrineFile};
+/// # use crate::shrine::shrine_file::{EncryptionAlgorithm, SerializationFormat, ShrineFile};
 /// let file = ShrineFile::default();
 /// assert_eq!(file.version(), 0);
 /// assert_eq!(file.encryption_algorithm(), EncryptionAlgorithm::Plain);
 /// assert_eq!(file.serialization_format(), SerializationFormat::Bson);
-/// assert_eq!(file.payload().len(), 0);
 ///```
 impl Default for ShrineFile {
     fn default() -> Self {
@@ -145,6 +191,14 @@ pub enum EncryptionAlgorithm {
     Plain,
 }
 
+impl EncryptionAlgorithm {
+    fn encryptor(&self) -> Box<dyn EncDec> {
+        match self {
+            EncryptionAlgorithm::Plain => Box::new(Plain::new()),
+        }
+    }
+}
+
 /// The serialization format
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum SerializationFormat {
@@ -153,6 +207,18 @@ pub enum SerializationFormat {
     Bson,
     /// JSON, the ubiquitous JavaScript Object Notation used by many HTTP APIs.
     Json,
+    /// MessagePack, an efficient binary format that resembles a compact JSON.
+    MessagePage,
+}
+
+impl SerializationFormat {
+    fn serializer(&self) -> Box<dyn SerDe<Shrine>> {
+        match self {
+            SerializationFormat::Bson => Box::new(BsonSerDe::new()),
+            SerializationFormat::Json => Box::new(JsonSerDe::new()),
+            SerializationFormat::MessagePage => Box::new(MessagePackSerDe::new()),
+        }
+    }
 }
 
 #[derive(Error, Debug)]
@@ -167,9 +233,39 @@ pub enum FileFormatError {
     UnsupportedVersion(u8),
 }
 
+#[derive(Default)]
+pub struct ShrineFileBuilder {
+    encryption_algorithm: EncryptionAlgorithm,
+    serialization_format: SerializationFormat,
+}
+
+impl ShrineFileBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_encryption_algorithm(mut self, encryption_algorithm: EncryptionAlgorithm) -> Self {
+        self.encryption_algorithm = encryption_algorithm;
+        self
+    }
+
+    pub fn with_serialization_format(mut self, serialization_format: SerializationFormat) -> Self {
+        self.serialization_format = serialization_format;
+        self
+    }
+
+    pub fn build(self) -> ShrineFile {
+        ShrineFile::new(Metadata::V0 {
+            encryption_algorithm: self.encryption_algorithm,
+            serialization_format: self.serialization_format,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::file_format::{ShrineFile, VERSION};
+    use crate::shrine::Shrine;
+    use crate::shrine_file::{SerializationFormat, ShrineFile, ShrineFileBuilder, VERSION};
 
     #[test]
     fn invalid_magic_number() {
@@ -201,5 +297,33 @@ mod tests {
                 VERSION
             )
         );
+    }
+
+    #[test]
+    fn wrap_unwrap() {
+        let mut shrine = Shrine::new();
+        shrine.set("key", "val");
+
+        let mut shrine_file = ShrineFileBuilder::new()
+            .with_serialization_format(SerializationFormat::Json)
+            .build();
+        shrine_file.wrap(shrine).expect("could not wrap shrine");
+
+        let bytes = shrine_file
+            .as_bytes()
+            .expect("could not serialize shrine file");
+
+        let shrine_file =
+            ShrineFile::from_bytes(&bytes).expect("could not deserialize shrine file");
+
+        let shrine = shrine_file.unwrap().expect("could not unwrap shrine");
+
+        assert_eq!(
+            "val".as_bytes(),
+            shrine
+                .get("key")
+                .expect("key not found")
+                .expose_secret_as_bytes()
+        )
     }
 }
