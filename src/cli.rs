@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use shrine::controller::get::get;
 use shrine::controller::init::init;
 use shrine::controller::ls::ls;
@@ -7,6 +7,7 @@ use shrine::controller::set::set;
 
 use shrine::Error;
 
+use shrine::shrine_file::EncryptionAlgorithm;
 use std::process::ExitCode;
 
 #[derive(Clone, Parser)]
@@ -23,6 +24,9 @@ enum Commands {
         /// Override any existing shrine
         #[arg(long, short)]
         force: bool,
+        /// Encryption algorithm to use
+        #[arg(long, short)]
+        encryption: Option<EncryptionAlgorithms>,
     },
     /// Sets a secret key/value pair
     Set {
@@ -50,12 +54,31 @@ enum Commands {
     },
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum EncryptionAlgorithms {
+    /// No encryption
+    None,
+    /// AES-GCM-SIV with 256-bits key
+    Aes,
+}
+
+impl From<EncryptionAlgorithms> for EncryptionAlgorithm {
+    fn from(value: EncryptionAlgorithms) -> Self {
+        match value {
+            EncryptionAlgorithms::None => EncryptionAlgorithm::Plain,
+            EncryptionAlgorithms::Aes => EncryptionAlgorithm::Aes,
+        }
+    }
+}
+
 #[allow(unused)]
 fn main() -> ExitCode {
     let cli = Args::parse();
 
     let result = match &cli.command {
-        Some(Commands::Init { force }) => init(*force),
+        Some(Commands::Init { force, encryption }) => {
+            init(*force, encryption.map(|algo| algo.into()))
+        }
         Some(Commands::Set { key, value }) => set(key, value.as_deref()),
         Some(Commands::Get { key }) => get(key),
         Some(Commands::Ls { key }) => ls(key.as_ref()),
