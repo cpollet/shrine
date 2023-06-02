@@ -10,6 +10,7 @@ pub mod io;
 pub mod serialize;
 pub mod shrine;
 pub mod shrine_file;
+pub mod utils;
 
 static SHRINE_FILENAME: &str = "shrine";
 
@@ -22,6 +23,7 @@ pub enum Error {
     Update(String),
     KeyNotFound,
     InvalidPattern(regex::Error),
+    InvalidPassword,
 }
 
 impl Display for Error {

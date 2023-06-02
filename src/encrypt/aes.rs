@@ -8,13 +8,13 @@ use sha2::Sha256;
 
 use crate::encrypt::{EncDec, Error};
 
-pub struct Aes {
-    password: Secret<String>,
+pub struct Aes<'pwd> {
+    password: &'pwd Secret<String>,
     aad: Option<Secret<String>>,
 }
 
-impl Aes {
-    pub fn new(password: Secret<String>, aad: Option<Secret<String>>) -> Self {
+impl<'pwd> Aes<'pwd> {
+    pub fn new(password: &'pwd Secret<String>, aad: Option<Secret<String>>) -> Self {
         Self { password, aad }
     }
 }
@@ -22,7 +22,7 @@ impl Aes {
 const KEY_SALT_LEN: usize = 128 / 8;
 const NONCE_LEN: usize = 96 / 8;
 
-impl EncDec for Aes {
+impl<'pwd> EncDec for Aes<'pwd> {
     fn encrypt(&self, cleartext: &[u8]) -> Result<Vec<u8>, Error> {
         let mut salt = [0u8; KEY_SALT_LEN];
         OsRng.fill_bytes(&mut salt);
@@ -67,7 +67,7 @@ const PBKDF2_ROUNDS: u32 = 1;
 #[cfg(not(debug_assertions))]
 const PBKDF2_ROUNDS: u32 = 600_000;
 
-impl Aes {
+impl<'pwd> Aes<'pwd> {
     fn cipher(&self, salt: &[u8]) -> Aes256GcmSiv {
         let key = pbkdf2_hmac_array::<Sha256, 32>(
             self.password.expose_secret().as_bytes(),

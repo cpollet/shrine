@@ -46,6 +46,10 @@ impl ShrineFile {
         self.metadata.serialization_format()
     }
 
+    pub fn requires_password(&self) -> bool {
+        self.encryption_algorithm().requires_password()
+    }
+
     /// Serializes the `ShrineFile`.
     ///
     /// ```
@@ -88,7 +92,7 @@ impl ShrineFile {
     }
 
     /// Wraps a `Shrine` inside of a `ShrineFile`.
-    pub fn wrap(&mut self, shrine: Shrine) -> Result<(), Error> {
+    pub fn wrap(&mut self, shrine: Shrine, password: &Secret<String>) -> Result<(), Error> {
         let bytes = match self
             .metadata
             .serialization_format()
@@ -102,7 +106,7 @@ impl ShrineFile {
         let bytes = self
             .metadata
             .encryption_algorithm()
-            .encryptor()
+            .encryptor(password)
             .encrypt(&bytes)
             .map_err(|e| Error::Write(e.to_string()))?;
 
@@ -112,11 +116,11 @@ impl ShrineFile {
     }
 
     /// Unwraps the `Shrine` from the `ShrineFile`.
-    pub fn unwrap(&self) -> Result<Shrine, Error> {
+    pub fn unwrap(&self, password: &Secret<String>) -> Result<Shrine, Error> {
         let bytes = self
             .metadata
             .encryption_algorithm()
-            .encryptor()
+            .encryptor(password)
             .decrypt(&self.payload)
             .map_err(|e| Error::Read(e.to_string()))?;
 
@@ -203,12 +207,19 @@ pub enum EncryptionAlgorithm {
 }
 
 impl EncryptionAlgorithm {
-    fn encryptor(&self) -> Box<dyn EncDec> {
+    fn requires_password(&self) -> bool {
+        match self {
+            EncryptionAlgorithm::Aes => true,
+            EncryptionAlgorithm::Plain => false,
+        }
+    }
+
+    fn encryptor<'pwd>(&self, password: &'pwd Secret<String>) -> Box<dyn EncDec + 'pwd> {
         match self {
             EncryptionAlgorithm::Aes => {
                 // FIXME (#2): use the previous commit hash and repo remote as the AAD
                 //  something similar to https://github.com/cpollet/shrine.git#ae9ef36cc813d90a47c13315158f8dc3f87ee81e
-                Box::new(Aes::new(Secret::new("password".to_string()), None))
+                Box::new(Aes::new(password, None))
             }
             EncryptionAlgorithm::Plain => Box::new(Plain::new()),
         }
@@ -294,6 +305,7 @@ impl Display for Error {
 mod tests {
     use crate::shrine::Shrine;
     use crate::shrine_file::{SerializationFormat, ShrineFile, ShrineFileBuilder, VERSION};
+    use secrecy::Secret;
 
     #[test]
     fn invalid_magic_number() {
@@ -332,10 +344,14 @@ mod tests {
         let mut shrine = Shrine::new();
         shrine.set("key", "val");
 
+        let password = Secret::new("password".to_string());
+
         let mut shrine_file = ShrineFileBuilder::new()
             .with_serialization_format(SerializationFormat::Json)
             .build();
-        shrine_file.wrap(shrine).expect("could not wrap shrine");
+        shrine_file
+            .wrap(shrine, &password)
+            .expect("could not wrap shrine");
 
         let bytes = shrine_file
             .as_bytes()
@@ -344,7 +360,9 @@ mod tests {
         let shrine_file =
             ShrineFile::from_bytes(&bytes).expect("could not deserialize shrine file");
 
-        let shrine = shrine_file.unwrap().expect("could not unwrap shrine");
+        let shrine = shrine_file
+            .unwrap(&password)
+            .expect("could not unwrap shrine");
 
         assert_eq!(
             "val".as_bytes(),

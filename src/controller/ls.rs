@@ -1,4 +1,5 @@
 use crate::io::load_shrine_file;
+use crate::utils::read_password;
 use crate::Error;
 use regex::Regex;
 
@@ -11,7 +12,7 @@ pub fn ls(key: Option<&String>) -> Result<(), Error> {
     let shrine_file = load_shrine_file().map_err(Error::ReadFile)?;
 
     let shrine = shrine_file
-        .unwrap()
+        .unwrap(&read_password(&shrine_file))
         .map_err(|e| Error::InvalidFile(e.to_string()))?;
 
     let mut keys = shrine

@@ -96,5 +96,9 @@ fn main() -> ExitCode {
             eprintln!("Invalid pattern: {}", e);
             ExitCode::from(1)
         }
+        Err(Error::InvalidPassword) => {
+            eprintln!("Password invalid");
+            ExitCode::from(1)
+        }
     }
 }
