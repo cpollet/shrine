@@ -15,16 +15,20 @@ shrine set personal/email/me@myhost.net mySecurePassword
 shrine set personal/email/me@gmail.com mySecurePassword
 ```
 
+### Get a secret value
+```shell
+shrine get personal/github
+```
+
 ### List secrets
 ```shell
 shrine ls
-shrine ls personal/email/*
+shrine ls personal/email/.*
 ```
 
 ### Delete secrets
 ```shell
 shrine rm personal/email/me@myhost.net
-shrine rm personal/email/*
 ```
 
 ## Configure git integration

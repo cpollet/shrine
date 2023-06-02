@@ -12,3 +12,5 @@ target/
 # IntelliJ IDEA
 .idea
 *.iml
+
+shrine

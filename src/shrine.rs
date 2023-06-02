@@ -35,6 +35,17 @@ impl Shrine {
         self.secrets.get(key.into())
     }
 
+    /// Returns all the keys, sorted in alphabetical order.
+    pub fn keys(&self) -> Vec<String> {
+        let mut keys = self
+            .secrets
+            .keys()
+            .map(|k| k.to_string())
+            .collect::<Vec<String>>();
+        keys.sort_unstable();
+        keys
+    }
+
     /// Removes a secret.
     pub fn remove<'k, K>(&mut self, key: K)
     where
