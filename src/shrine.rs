@@ -116,6 +116,7 @@ mod tests {
         assert_eq!(model.len(), 1);
     }
 
+    #[test]
     fn remove() {
         let mut model = Shrine::new();
         model.set("key", "value");
