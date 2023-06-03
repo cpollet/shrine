@@ -1,5 +1,6 @@
 use crate::io::load_shrine_file;
 use crate::Error;
+use std::path::PathBuf;
 
 pub enum Fields {
     Version,
@@ -8,8 +9,8 @@ pub enum Fields {
     Encryption,
 }
 
-pub fn info(field: Option<Fields>) -> Result<(), Error> {
-    let shrine_file = load_shrine_file().map_err(Error::ReadFile)?;
+pub fn info(folder: PathBuf, field: Option<Fields>) -> Result<(), Error> {
+    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
 
     match field {
         None => {

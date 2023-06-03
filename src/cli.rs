@@ -22,6 +22,9 @@ struct Args {
     /// The password to use; if not provided, will be prompted interactively when needed
     #[arg(short, long)]
     password: Option<String>,
+    /// The folder containing the shrine file
+    #[arg(short, long, default_value = ".")]
+    folder: PathBuf,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -137,27 +140,32 @@ fn main() -> ExitCode {
     let cli = Args::parse();
 
     let password = cli.password.map(Secret::new);
+    let folder = cli.folder;
+
     let result = match &cli.command {
         Some(Commands::Init { force, encryption }) => {
-            init(password, *force, encryption.map(|algo| algo.into()))
+            init(folder, password, *force, encryption.map(|algo| algo.into()))
         }
         Some(Commands::Convert {
             change_password,
             new_password,
             encryption,
         }) => convert(
+            folder,
             password,
             *change_password,
             new_password.clone().map(Secret::new),
             encryption.map(|algo| algo.into()),
         ),
-        Some(Commands::Info { field }) => info((*field).map(Fields::from)),
-        Some(Commands::Set { key, value }) => set(password, key, value.as_deref()),
-        Some(Commands::Get { key }) => get(password, key),
-        Some(Commands::Ls { pattern }) => ls(password, pattern.as_ref()),
-        Some(Commands::Rm { key }) => rm(password, key),
-        Some(Commands::Import { file, prefix }) => import(password, file, prefix.as_deref()),
-        Some(Commands::Dump { pattern }) => dump(password, pattern.as_ref()),
+        Some(Commands::Info { field }) => info(folder, (*field).map(Fields::from)),
+        Some(Commands::Set { key, value }) => set(folder, password, key, value.as_deref()),
+        Some(Commands::Get { key }) => get(folder, password, key),
+        Some(Commands::Ls { pattern }) => ls(folder, password, pattern.as_ref()),
+        Some(Commands::Rm { key }) => rm(folder, password, key),
+        Some(Commands::Import { file, prefix }) => {
+            import(folder, password, file, prefix.as_deref())
+        }
+        Some(Commands::Dump { pattern }) => dump(folder, password, pattern.as_ref()),
         _ => panic!(),
     };
 

@@ -68,5 +68,11 @@ output="$($SHRINE --password "$PASSWORD_2" ls | tail -n1)"
 [ "$output" != "-> 4 keys found" ] && echo -e "\n${RED}Expected \`-> 2 keys found\` got \`$output\`${RESET}" && exit 1
 echo -e "${GREEN}ok${RESET}"
 
+echo -n "Create shine in another folder ... "
+mkdir another
+$SHRINE --password="$PASSWORD_1" --folder another init
+[ ! -f another/shrine ] && echo -e "\n${RED}Expected \`another/shrine\` to exist${RESET}" && exit 1
+echo -e "${GREEN}ok${RESET}"
+
 popd > /dev/null || exit 1
 exit 0

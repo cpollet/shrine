@@ -3,14 +3,19 @@ use crate::utils::read_password;
 use crate::Error;
 use regex::Regex;
 use secrecy::Secret;
+use std::path::PathBuf;
 
-pub fn ls(password: Option<Secret<String>>, pattern: Option<&String>) -> Result<(), Error> {
+pub fn ls(
+    folder: PathBuf,
+    password: Option<Secret<String>>,
+    pattern: Option<&String>,
+) -> Result<(), Error> {
     let regex = pattern
         .map(|p| Regex::new(p.as_ref()))
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
-    let shrine_file = load_shrine_file().map_err(Error::ReadFile)?;
+    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
 
     let password = password.unwrap_or_else(|| read_password(&shrine_file));
 
