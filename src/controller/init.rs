@@ -5,7 +5,8 @@ use crate::{Error, SHRINE_FILENAME};
 
 use std::path::Path;
 
-use secrecy::Secret;
+use crate::utils::read_new_password;
+
 use std::string::ToString;
 
 pub fn init(force: bool, encryption: Option<EncryptionAlgorithm>) -> Result<(), Error> {
@@ -21,16 +22,7 @@ pub fn init(force: bool, encryption: Option<EncryptionAlgorithm>) -> Result<(), 
 
     let mut shrine_file = shrine_file_builder.build();
 
-    let password = if shrine_file.requires_password() {
-        let password1 = rpassword::prompt_password("Enter shrine password: ").unwrap();
-        let password2 = rpassword::prompt_password("Enter shrine password (again): ").unwrap();
-        if password1 != password2 {
-            return Err(Error::InvalidPassword);
-        }
-        Secret::new(password1)
-    } else {
-        Secret::new("".to_string())
-    };
+    let password = read_new_password(&shrine_file)?;
 
     shrine_file
         .wrap(Shrine::default(), &password)

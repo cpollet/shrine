@@ -1,4 +1,5 @@
 use crate::shrine_file::ShrineFile;
+use crate::Error;
 use csv::ReaderBuilder;
 use secrecy::Secret;
 use serde::Deserialize;
@@ -82,6 +83,19 @@ pub fn read_password(shrine_file: &ShrineFile) -> Secret<String> {
     }
 
     read_password_from_tty()
+}
+
+pub fn read_new_password(shrine_file: &ShrineFile) -> Result<Secret<String>, Error> {
+    if shrine_file.requires_password() {
+        let password1 = rpassword::prompt_password("Enter new shrine password: ").unwrap();
+        let password2 = rpassword::prompt_password("Enter new shrine password (again): ").unwrap();
+        if password1 != password2 {
+            return Err(Error::InvalidPassword);
+        }
+        Ok(Secret::new(password1))
+    } else {
+        Ok(Secret::new("".to_string()))
+    }
 }
 
 fn read_password_from_tty() -> Secret<String> {

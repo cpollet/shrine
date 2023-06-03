@@ -7,6 +7,7 @@ use shrine::controller::set::set;
 
 use shrine::Error;
 
+use shrine::controller::convert::convert;
 use shrine::controller::info::{info, Fields};
 use shrine::shrine_file::EncryptionAlgorithm;
 use std::process::ExitCode;
@@ -26,6 +27,16 @@ enum Commands {
         #[arg(long, short)]
         force: bool,
         /// Encryption algorithm to use
+        #[arg(long, short)]
+        encryption: Option<EncryptionAlgorithms>,
+    },
+    /// Convert a shrine to a different format and/or password. This always changes the shrine's
+    /// UUID
+    Convert {
+        /// Change password?
+        #[arg(long, short, default_value = "false")]
+        change_password: bool,
+        /// New encryption algorithm to use (implies password change)
         #[arg(long, short)]
         encryption: Option<EncryptionAlgorithms>,
     },
@@ -105,6 +116,10 @@ fn main() -> ExitCode {
         Some(Commands::Init { force, encryption }) => {
             init(*force, encryption.map(|algo| algo.into()))
         }
+        Some(Commands::Convert {
+            change_password,
+            encryption,
+        }) => convert(*change_password, encryption.map(|algo| algo.into())),
         Some(Commands::Info { field }) => info((*field).map(Fields::from)),
         Some(Commands::Set { key, value }) => set(key, value.as_deref()),
         Some(Commands::Get { key }) => get(key),
