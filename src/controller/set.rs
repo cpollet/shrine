@@ -4,11 +4,16 @@ use crate::Error;
 
 use crate::utils::read_password;
 use rpassword::prompt_password;
+use secrecy::Secret;
 
-pub fn set(key: &String, value: Option<&str>) -> Result<(), Error> {
+pub fn set(
+    password: Option<Secret<String>>,
+    key: &String,
+    value: Option<&str>,
+) -> Result<(), Error> {
     let shrine_file = load_shrine_file().map_err(Error::ReadFile)?;
 
-    let password = read_password(&shrine_file);
+    let password = password.unwrap_or_else(|| read_password(&shrine_file));
 
     let mut shrine = shrine_file
         .unwrap(&password)

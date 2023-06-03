@@ -7,6 +7,7 @@ use shrine::controller::set::set;
 
 use shrine::Error;
 
+use secrecy::Secret;
 use shrine::controller::convert::convert;
 use shrine::controller::info::{info, Fields};
 use shrine::shrine_file::EncryptionAlgorithm;
@@ -15,6 +16,9 @@ use std::process::ExitCode;
 #[derive(Clone, Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
 struct Args {
+    /// The password to use; if not provided, will be prompted interactively when needed
+    #[arg(short, long)]
+    password: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -33,9 +37,12 @@ enum Commands {
     /// Convert a shrine to a different format and/or password. This always changes the shrine's
     /// UUID
     Convert {
-        /// Change password?
+        /// Change the password; if set and no new password is provided, it will be prompted
         #[arg(long, short, default_value = "false")]
         change_password: bool,
+        /// The new password to use; if set, implies password change
+        #[arg(long, short)]
+        new_password: Option<String>,
         /// New encryption algorithm to use (implies password change)
         #[arg(long, short)]
         encryption: Option<EncryptionAlgorithms>,
@@ -112,19 +119,26 @@ impl From<InfoFields> for Fields {
 fn main() -> ExitCode {
     let cli = Args::parse();
 
+    let password = cli.password.map(Secret::new);
     let result = match &cli.command {
         Some(Commands::Init { force, encryption }) => {
-            init(*force, encryption.map(|algo| algo.into()))
+            init(password, *force, encryption.map(|algo| algo.into()))
         }
         Some(Commands::Convert {
             change_password,
+            new_password,
             encryption,
-        }) => convert(*change_password, encryption.map(|algo| algo.into())),
+        }) => convert(
+            password,
+            *change_password,
+            new_password.clone().map(Secret::new),
+            encryption.map(|algo| algo.into()),
+        ),
         Some(Commands::Info { field }) => info((*field).map(Fields::from)),
-        Some(Commands::Set { key, value }) => set(key, value.as_deref()),
-        Some(Commands::Get { key }) => get(key),
-        Some(Commands::Ls { key }) => ls(key.as_ref()),
-        Some(Commands::Rm { key }) => rm(key),
+        Some(Commands::Set { key, value }) => set(password, key, value.as_deref()),
+        Some(Commands::Get { key }) => get(password, key),
+        Some(Commands::Ls { key }) => ls(password, key.as_ref()),
+        Some(Commands::Rm { key }) => rm(password, key),
         _ => panic!(),
     };
 

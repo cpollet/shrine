@@ -7,9 +7,14 @@ use std::path::Path;
 
 use crate::utils::read_new_password;
 
+use secrecy::Secret;
 use std::string::ToString;
 
-pub fn init(force: bool, encryption: Option<EncryptionAlgorithm>) -> Result<(), Error> {
+pub fn init(
+    password: Option<Secret<String>>,
+    force: bool,
+    encryption: Option<EncryptionAlgorithm>,
+) -> Result<(), Error> {
     if !force && Path::new(SHRINE_FILENAME).exists() {
         return Err(Error::FileAlreadyExists(SHRINE_FILENAME.to_string()));
     }
@@ -22,7 +27,9 @@ pub fn init(force: bool, encryption: Option<EncryptionAlgorithm>) -> Result<(), 
 
     let mut shrine_file = shrine_file_builder.build();
 
-    let password = read_new_password(&shrine_file)?;
+    let password = password
+        .map(Ok)
+        .unwrap_or_else(|| read_new_password(&shrine_file))?;
 
     shrine_file
         .wrap(Shrine::default(), &password)

@@ -2,11 +2,15 @@ use crate::io::{load_shrine_file, save_shrine_file};
 use crate::shrine_file::{EncryptionAlgorithm, ShrineFileBuilder};
 use crate::utils::{read_new_password, read_password};
 use crate::Error;
+use secrecy::Secret;
 
 pub fn convert(
+    password: Option<Secret<String>>,
     change_password: bool,
+    new_password: Option<Secret<String>>,
     encryption_algorithm: Option<EncryptionAlgorithm>,
 ) -> Result<(), Error> {
+    let change_password = change_password || new_password.is_some();
     if !change_password && encryption_algorithm.is_none() {
         return Ok(());
     }
@@ -14,7 +18,7 @@ pub fn convert(
     let mut change_password = change_password;
 
     let shrine_file = load_shrine_file().map_err(Error::ReadFile)?;
-    let password = read_password(&shrine_file);
+    let password = password.unwrap_or_else(|| read_password(&shrine_file));
     let shrine = shrine_file
         .unwrap(&password)
         .map_err(|e| Error::InvalidFile(e.to_string()))?;
@@ -33,7 +37,9 @@ pub fn convert(
     let mut new_shrine_file = shrine_file_builder.build();
 
     let password = if change_password {
-        read_new_password(&new_shrine_file)?
+        new_password
+            .map(Ok)
+            .unwrap_or_else(|| read_new_password(&new_shrine_file))?
     } else {
         password
     };
