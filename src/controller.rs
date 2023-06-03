@@ -1,4 +1,5 @@
 pub mod convert;
+pub mod dump;
 pub mod get;
 pub mod import;
 pub mod info;

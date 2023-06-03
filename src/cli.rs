@@ -10,6 +10,7 @@ use shrine::Error;
 
 use secrecy::Secret;
 use shrine::controller::convert::convert;
+use shrine::controller::dump::dump;
 use shrine::controller::import::import;
 use shrine::controller::info::{info, Fields};
 use shrine::shrine_file::EncryptionAlgorithm;
@@ -71,7 +72,7 @@ enum Commands {
     Ls {
         /// Only lists the key matching the provided pattern
         #[arg(value_name = "REGEX")]
-        key: Option<String>,
+        pattern: Option<String>,
     },
     /// Removes secrets stored in keys matching the provided pattern
     Rm {
@@ -86,6 +87,12 @@ enum Commands {
         /// Prefix keys with value
         #[arg(long, short)]
         prefix: Option<String>,
+    },
+    /// Dumps the secrets in a `key=value` format
+    Dump {
+        /// Only dump the key matching the provided pattern
+        #[arg(value_name = "REGEX")]
+        pattern: Option<String>,
     },
 }
 
@@ -147,9 +154,10 @@ fn main() -> ExitCode {
         Some(Commands::Info { field }) => info((*field).map(Fields::from)),
         Some(Commands::Set { key, value }) => set(password, key, value.as_deref()),
         Some(Commands::Get { key }) => get(password, key),
-        Some(Commands::Ls { key }) => ls(password, key.as_ref()),
+        Some(Commands::Ls { pattern }) => ls(password, pattern.as_ref()),
         Some(Commands::Rm { key }) => rm(password, key),
         Some(Commands::Import { file, prefix }) => import(password, file, prefix.as_deref()),
+        Some(Commands::Dump { pattern }) => dump(password, pattern.as_ref()),
         _ => panic!(),
     };
 

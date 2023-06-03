@@ -6,9 +6,9 @@ use dotenv_parser::parse_dotenv;
 use secrecy::Secret;
 
 use std::fs::read_to_string;
+use std::io;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::{io};
 
 // https://crates.io/crates/dotenv-parser
 // todo compliant with https://hexdocs.pm/dotenvy/dotenv-file-format.html

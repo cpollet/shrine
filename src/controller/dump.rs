@@ -4,7 +4,7 @@ use crate::Error;
 use regex::Regex;
 use secrecy::Secret;
 
-pub fn ls(password: Option<Secret<String>>, pattern: Option<&String>) -> Result<(), Error> {
+pub fn dump(password: Option<Secret<String>>, pattern: Option<&String>) -> Result<(), Error> {
     let regex = pattern
         .map(|p| Regex::new(p.as_ref()))
         .transpose()
@@ -26,10 +26,12 @@ pub fn ls(password: Option<Secret<String>>, pattern: Option<&String>) -> Result<
     keys.sort_unstable();
 
     for key in keys.iter() {
-        println!("{}", key)
+        println!(
+            "{}={}",
+            key,
+            String::from_utf8_lossy(shrine.get(key.as_ref()).unwrap().expose_secret_as_bytes())
+        )
     }
-
-    println!("-> {} keys found", keys.len());
 
     Ok(())
 }
