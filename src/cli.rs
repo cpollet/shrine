@@ -4,11 +4,13 @@ use shrine::controller::init::init;
 use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
 use shrine::controller::set::set;
+use std::path::PathBuf;
 
 use shrine::Error;
 
 use secrecy::Secret;
 use shrine::controller::convert::convert;
+use shrine::controller::import::import;
 use shrine::controller::info::{info, Fields};
 use shrine::shrine_file::EncryptionAlgorithm;
 use std::process::ExitCode;
@@ -77,6 +79,14 @@ enum Commands {
         #[arg(value_name = "REGEX")]
         key: String,
     },
+    /// Imports secret and their values from environment file
+    Import {
+        /// The file to import
+        file: PathBuf,
+        /// Prefix keys with value
+        #[arg(long, short)]
+        prefix: Option<String>,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -139,6 +149,7 @@ fn main() -> ExitCode {
         Some(Commands::Get { key }) => get(password, key),
         Some(Commands::Ls { key }) => ls(password, key.as_ref()),
         Some(Commands::Rm { key }) => rm(password, key),
+        Some(Commands::Import { file, prefix }) => import(password, file, prefix.as_deref()),
         _ => panic!(),
     };
 
@@ -167,8 +178,8 @@ fn main() -> ExitCode {
             eprintln!("Could not update shrine: `{}`", message);
             ExitCode::from(1)
         }
-        Err(Error::KeyNotFound) => {
-            eprintln!("Key does not exist");
+        Err(Error::KeyNotFound(key)) => {
+            eprintln!("Key `{}` does not exist", key);
             ExitCode::from(1)
         }
         Err(Error::InvalidPattern(e)) => {

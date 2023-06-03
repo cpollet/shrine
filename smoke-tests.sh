@@ -47,5 +47,26 @@ output="$($SHRINE --password "$PASSWORD_2" ls)"
 [ "$output" != "-> 0 keys found" ] && echo -e "\n${RED}Expected \`-> 0 keys found\` got \`$output\`${RESET}" && exit 1
 echo -e "${GREEN}ok${RESET}"
 
+echo -n "Import from env file ... "
+echo -e "key1=val1#comment\n#a comment\n\nkey2=val2==" > env-file
+$SHRINE --password="$PASSWORD_2" import env-file
+output="$($SHRINE --password "$PASSWORD_2" get key1)"
+[ "$output" != "val1" ] && echo -e "\n${RED}Expected \`val1\` got \`$output\`${RESET}" && exit 1
+output="$($SHRINE --password "$PASSWORD_2" get key2)"
+[ "$output" != "val2==" ] && echo -e "\n${RED}Expected \`val2==\` got \`$output\`${RESET}" && exit 1
+output="$($SHRINE --password "$PASSWORD_2" ls | tail -n1)"
+[ "$output" != "-> 2 keys found" ] && echo -e "\n${RED}Expected \`-> 2 keys found\` got \`$output\`${RESET}" && exit 1
+echo -e "${GREEN}ok${RESET}"
+
+echo -n "Import from env file with prefix ... "
+$SHRINE --password="$PASSWORD_2" import env-file --prefix env/
+output="$($SHRINE --password "$PASSWORD_2" get env/key1)"
+[ "$output" != "val1" ] && echo -e "\n${RED}Expected \`val1\` got \`$output\`${RESET}" && exit 1
+output="$($SHRINE --password "$PASSWORD_2" get env/key2)"
+[ "$output" != "val2==" ] && echo -e "\n${RED}Expected \`val2==\` got \`$output\`${RESET}" && exit 1
+output="$($SHRINE --password "$PASSWORD_2" ls | tail -n1)"
+[ "$output" != "-> 4 keys found" ] && echo -e "\n${RED}Expected \`-> 2 keys found\` got \`$output\`${RESET}" && exit 1
+echo -e "${GREEN}ok${RESET}"
+
 popd > /dev/null || exit 1
 exit 0

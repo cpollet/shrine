@@ -14,7 +14,9 @@ pub fn get(password: Option<Secret<String>>, key: &String) -> Result<(), Error> 
         .unwrap(&password)
         .map_err(|e| Error::InvalidFile(e.to_string()))?;
 
-    let secret = shrine.get(key.as_ref()).ok_or(Error::KeyNotFound)?;
+    let secret = shrine
+        .get(key.as_ref())
+        .ok_or(Error::KeyNotFound(key.to_string()))?;
 
     let _ = stdout().write_all(secret.expose_secret_as_bytes());
 

@@ -21,7 +21,7 @@ pub enum Error {
     InvalidFile(String),
     WriteFile(IoError),
     Update(String),
-    KeyNotFound,
+    KeyNotFound(String),
     InvalidPattern(regex::Error),
     InvalidPassword,
 }
