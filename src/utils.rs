@@ -54,6 +54,7 @@ pub fn read_password(shrine_file: &ShrineFile) -> Secret<String> {
 
             if let Ok(mut csv) = ReaderBuilder::new()
                 .has_headers(false)
+                .delimiter(b'=')
                 .from_path(password_file)
             {
                 let csv = csv.deserialize::<Row>();
