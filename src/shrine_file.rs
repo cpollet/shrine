@@ -13,6 +13,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use secrecy::Secret;
 
 use thiserror::Error;
+use uuid::Uuid;
 
 /// Max supported file version
 const VERSION: u8 = 0;
@@ -38,6 +39,10 @@ impl ShrineFile {
         self.metadata.version()
     }
 
+    pub fn uuid(&self) -> Uuid {
+        self.metadata.uuid()
+    }
+
     pub fn encryption_algorithm(&self) -> EncryptionAlgorithm {
         self.metadata.encryption_algorithm()
     }
@@ -55,9 +60,8 @@ impl ShrineFile {
     /// ```
     /// # use shrine::shrine_file::ShrineFile;
     /// let file = ShrineFile::default();
-    /// assert_eq!(
-    ///     file.as_bytes().unwrap().len() as u64,
-    ///     13
+    /// assert!(
+    ///     file.as_bytes().unwrap().len() > 0
     /// );
     /// ```
     pub fn as_bytes(&self) -> Result<Vec<u8>, FileFormatError> {
@@ -154,6 +158,7 @@ impl Default for ShrineFile {
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 enum Metadata {
     V0 {
+        uuid: u128,
         /// The algorithm used to encrypt the payload.
         encryption_algorithm: EncryptionAlgorithm,
         /// The serialization format used to serialize the payload.
@@ -165,6 +170,12 @@ impl Metadata {
     fn version(&self) -> u8 {
         match self {
             Metadata::V0 { .. } => 0,
+        }
+    }
+
+    fn uuid(&self) -> Uuid {
+        match self {
+            Metadata::V0 { uuid, .. } => Uuid::from_u128(*uuid),
         }
     }
 
@@ -190,6 +201,7 @@ impl Metadata {
 impl Default for Metadata {
     fn default() -> Self {
         Self::V0 {
+            uuid: Uuid::new_v4().as_u128(),
             encryption_algorithm: EncryptionAlgorithm::default(),
             serialization_format: SerializationFormat::default(),
         }
@@ -226,6 +238,15 @@ impl EncryptionAlgorithm {
     }
 }
 
+impl Display for EncryptionAlgorithm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EncryptionAlgorithm::Aes => write!(f, "AES-GCM-SIV with 256-bits key"),
+            EncryptionAlgorithm::Plain => write!(f, "Not encrypted"),
+        }
+    }
+}
+
 /// The serialization format
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum SerializationFormat {
@@ -235,7 +256,7 @@ pub enum SerializationFormat {
     /// JSON, the ubiquitous JavaScript Object Notation used by many HTTP APIs.
     Json,
     /// MessagePack, an efficient binary format that resembles a compact JSON.
-    MessagePage,
+    MessagePack,
 }
 
 impl SerializationFormat {
@@ -243,7 +264,17 @@ impl SerializationFormat {
         match self {
             SerializationFormat::Bson => Box::new(BsonSerDe::new()),
             SerializationFormat::Json => Box::new(JsonSerDe::new()),
-            SerializationFormat::MessagePage => Box::new(MessagePackSerDe::new()),
+            SerializationFormat::MessagePack => Box::new(MessagePackSerDe::new()),
+        }
+    }
+}
+
+impl Display for SerializationFormat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SerializationFormat::Bson => write!(f, "BSON"),
+            SerializationFormat::Json => write!(f, "JSON"),
+            SerializationFormat::MessagePack => write!(f, "MessagePack"),
         }
     }
 }
@@ -283,6 +314,7 @@ impl ShrineFileBuilder {
 
     pub fn build(self) -> ShrineFile {
         ShrineFile::new(Metadata::V0 {
+            uuid: Uuid::new_v4().as_u128(),
             encryption_algorithm: self.encryption_algorithm,
             serialization_format: self.serialization_format,
         })

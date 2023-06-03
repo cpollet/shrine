@@ -7,6 +7,7 @@ use shrine::controller::set::set;
 
 use shrine::Error;
 
+use shrine::controller::info::{info, Fields};
 use shrine::shrine_file::EncryptionAlgorithm;
 use std::process::ExitCode;
 
@@ -27,6 +28,12 @@ enum Commands {
         /// Encryption algorithm to use
         #[arg(long, short)]
         encryption: Option<EncryptionAlgorithms>,
+    },
+    /// Get metadata information about the shrine
+    Info {
+        /// The field to extract
+        #[arg(long, short)]
+        field: Option<InfoFields>,
     },
     /// Sets a secret key/value pair
     Set {
@@ -71,6 +78,25 @@ impl From<EncryptionAlgorithms> for EncryptionAlgorithm {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum InfoFields {
+    Version,
+    Uuid,
+    EncryptionAlgorithm,
+    SerializationFormat,
+}
+
+impl From<InfoFields> for Fields {
+    fn from(value: InfoFields) -> Self {
+        match value {
+            InfoFields::Version => Fields::Version,
+            InfoFields::Uuid => Fields::Uuid,
+            InfoFields::EncryptionAlgorithm => Fields::Encryption,
+            InfoFields::SerializationFormat => Fields::Serialization,
+        }
+    }
+}
+
 #[allow(unused)]
 fn main() -> ExitCode {
     let cli = Args::parse();
@@ -79,6 +105,7 @@ fn main() -> ExitCode {
         Some(Commands::Init { force, encryption }) => {
             init(*force, encryption.map(|algo| algo.into()))
         }
+        Some(Commands::Info { field }) => info((*field).map(Fields::from)),
         Some(Commands::Set { key, value }) => set(key, value.as_deref()),
         Some(Commands::Get { key }) => get(key),
         Some(Commands::Ls { key }) => ls(key.as_ref()),
