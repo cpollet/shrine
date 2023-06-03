@@ -10,11 +10,11 @@ use crate::encrypt::{EncDec, Error};
 
 pub struct Aes<'pwd> {
     password: &'pwd Secret<String>,
-    aad: Option<Secret<String>>,
+    aad: Option<String>,
 }
 
 impl<'pwd> Aes<'pwd> {
-    pub fn new(password: &'pwd Secret<String>, aad: Option<Secret<String>>) -> Self {
+    pub fn new(password: &'pwd Secret<String>, aad: Option<String>) -> Self {
         Self { password, aad }
     }
 }
@@ -82,7 +82,7 @@ impl<'pwd> Aes<'pwd> {
     fn payload<'msg, 'aad>(&'aad self, msg: &'msg [u8]) -> Payload<'msg, 'aad> {
         let aad: &[u8] = match &self.aad {
             None => &[],
-            Some(aad) => aad.expose_secret().as_bytes(),
+            Some(aad) => aad.as_bytes(),
         };
 
         Payload { msg, aad }

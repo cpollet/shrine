@@ -110,7 +110,7 @@ impl ShrineFile {
         let bytes = self
             .metadata
             .encryption_algorithm()
-            .encryptor(password)
+            .encryptor(password, None)
             .encrypt(&bytes)
             .map_err(|e| Error::Write(e.to_string()))?;
 
@@ -124,7 +124,7 @@ impl ShrineFile {
         let bytes = self
             .metadata
             .encryption_algorithm()
-            .encryptor(password)
+            .encryptor(password, None)
             .decrypt(&self.payload)
             .map_err(|e| Error::Read(e.to_string()))?;
 
@@ -226,12 +226,16 @@ impl EncryptionAlgorithm {
         }
     }
 
-    fn encryptor<'pwd>(&self, password: &'pwd Secret<String>) -> Box<dyn EncDec + 'pwd> {
+    fn encryptor<'pwd>(
+        &self,
+        password: &'pwd Secret<String>,
+        aad: Option<String>,
+    ) -> Box<dyn EncDec + 'pwd> {
         match self {
             EncryptionAlgorithm::Aes => {
                 // FIXME (#2): use the previous commit hash and repo remote as the AAD
                 //  something similar to https://github.com/cpollet/shrine.git#ae9ef36cc813d90a47c13315158f8dc3f87ee81e
-                Box::new(Aes::new(password, None))
+                Box::new(Aes::new(password, aad))
             }
             EncryptionAlgorithm::Plain => Box::new(Plain::new()),
         }
