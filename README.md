@@ -5,6 +5,8 @@ Secrets manager written in rust.
 [![CI](https://github.com/cpollet/shrine/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/cpollet/shrine/actions/workflows/test.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/licence-Apache%202.0-blue)](LICENSE)
 
+[![asciicast](demo.gif)](https://asciinema.org/a/589589?autoplay=1)
+
 # Command-line usage
 
 ### Initialize your shrine
