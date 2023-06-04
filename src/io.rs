@@ -23,7 +23,7 @@ pub fn load_shrine_file(folder: &PathBuf) -> Result<ShrineFile, Error> {
     ShrineFile::from_bytes(&bytes).map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))
 }
 
-pub fn save_shrine_file(folder: &PathBuf, shrine_file: &ShrineFile) -> Result<(), Error> {
+pub fn save_shrine_file(folder: &PathBuf, shrine_file: &ShrineFile) -> Result<PathBuf, Error> {
     let mut file = PathBuf::from(folder);
     file.push(SHRINE_FILENAME);
 
@@ -33,5 +33,7 @@ pub fn save_shrine_file(folder: &PathBuf, shrine_file: &ShrineFile) -> Result<()
         Err(e) => Err(Error::new(ErrorKind::Other, e.to_string())),
     }?;
 
-    File::create(file)?.write_all(&bytes)
+    File::create(&file)?.write_all(&bytes)?;
+
+    Ok(file)
 }

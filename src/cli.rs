@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use shrine::Error;
 
 use secrecy::Secret;
+use shrine::controller::config;
 use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
 use shrine::controller::import::import;
@@ -39,6 +40,9 @@ enum Commands {
         /// Encryption algorithm to use
         #[arg(long, short)]
         encryption: Option<EncryptionAlgorithms>,
+        /// Initialize a git repository to contain the shrine
+        #[arg(long, short)]
+        git: bool,
     },
     /// Convert a shrine to a different format and/or password. This always changes the shrine's
     /// UUID
@@ -96,6 +100,14 @@ enum Commands {
         /// Only dump the key matching the provided pattern
         #[arg(value_name = "REGEX")]
         pattern: Option<String>,
+        /// Include configuration keys
+        #[arg(long, short, default_value = "false")]
+        config: bool,
+    },
+    /// Configures the shrine
+    Config {
+        #[command(subcommand)]
+        command: Option<ConfigCommands>,
     },
 }
 
@@ -135,6 +147,23 @@ impl From<InfoFields> for Fields {
     }
 }
 
+#[derive(Clone, Subcommand)]
+#[command(arg_required_else_help = true)]
+enum ConfigCommands {
+    /// Sets a configuration option
+    Set {
+        /// The configuration key
+        key: String,
+        /// The configuration value; if not set, will be prompted
+        value: Option<String>,
+    },
+    /// Get a configuration option's value
+    Get {
+        /// The configuration key
+        key: String,
+    },
+}
+
 #[allow(unused)]
 fn main() -> ExitCode {
     let cli = Args::parse();
@@ -143,9 +172,17 @@ fn main() -> ExitCode {
     let folder = cli.folder;
 
     let result = match &cli.command {
-        Some(Commands::Init { force, encryption }) => {
-            init(folder, password, *force, encryption.map(|algo| algo.into()))
-        }
+        Some(Commands::Init {
+            force,
+            encryption,
+            git,
+        }) => init(
+            folder,
+            password,
+            *force,
+            encryption.map(|algo| algo.into()),
+            *git,
+        ),
         Some(Commands::Convert {
             change_password,
             new_password,
@@ -165,7 +202,16 @@ fn main() -> ExitCode {
         Some(Commands::Import { file, prefix }) => {
             import(folder, password, file, prefix.as_deref())
         }
-        Some(Commands::Dump { pattern }) => dump(folder, password, pattern.as_ref()),
+        Some(Commands::Dump { pattern, config }) => {
+            dump(folder, password, pattern.as_ref(), *config)
+        }
+        Some(Commands::Config { command }) => match command {
+            Some(ConfigCommands::Set { key, value }) => {
+                config::set(folder, password, key, value.as_deref())
+            }
+            Some(ConfigCommands::Get { key }) => config::get(folder, password, key),
+            _ => panic!(),
+        },
         _ => panic!(),
     };
 
@@ -204,6 +250,10 @@ fn main() -> ExitCode {
         }
         Err(Error::InvalidPassword) => {
             eprintln!("Password invalid");
+            ExitCode::from(1)
+        }
+        Err(Error::Git(e)) => {
+            eprintln!("Git error: {}", e.message());
             ExitCode::from(1)
         }
     }

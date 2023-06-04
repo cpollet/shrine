@@ -8,7 +8,7 @@ use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Shrine {
     /// Secrets and data private to the shrine.
-    private: HashMap<String, SecretBytes>,
+    private: HashMap<String, String>, // fixme should this be secret as well?
     /// Actual user-defined secrets.
     secrets: HashMap<String, SecretBytes>,
 }
@@ -109,6 +109,42 @@ impl Shrine {
     /// ```
     pub fn from_bytes(bytes: &[u8], serializer: Box<dyn SerDe<Self>>) -> Result<Self, Error> {
         serializer.deserialize(bytes)
+    }
+
+    /// Sets a private value.
+    pub fn set_private<K, V>(&mut self, key: K, value: V)
+    where
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.private.insert(key.into(), value.into());
+    }
+
+    /// Gets a private value.
+    pub fn get_private<'k, K>(&self, key: K) -> Option<&String>
+    where
+        K: Into<&'k str>,
+    {
+        self.private.get(key.into())
+    }
+
+    /// Removes a private value.
+    pub fn remove_private<'k, K>(&mut self, key: K)
+    where
+        K: Into<&'k str>,
+    {
+        self.private.remove(key.into());
+    }
+
+    /// Returns all the private keys, sorted in alphabetical order.
+    pub fn keys_private(&self) -> Vec<String> {
+        let mut keys = self
+            .private
+            .keys()
+            .map(|k| k.to_string())
+            .collect::<Vec<String>>();
+        keys.sort_unstable();
+        keys
     }
 }
 

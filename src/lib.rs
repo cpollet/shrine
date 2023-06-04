@@ -6,6 +6,7 @@ use thiserror::Error;
 pub mod bytes;
 pub mod controller;
 pub mod encrypt;
+pub mod git;
 pub mod io;
 pub mod serialize;
 pub mod shrine;
@@ -24,6 +25,7 @@ pub enum Error {
     KeyNotFound(String),
     InvalidPattern(regex::Error),
     InvalidPassword,
+    Git(git2::Error),
 }
 
 impl Display for Error {

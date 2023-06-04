@@ -20,5 +20,7 @@ pub fn rm(folder: PathBuf, password: Option<Secret<String>>, key: &String) -> Re
         .wrap(shrine, &password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&folder, &shrine_file).map_err(Error::WriteFile)
+    save_shrine_file(&folder, &shrine_file)
+        .map_err(Error::WriteFile)
+        .map(|_| ())
 }
