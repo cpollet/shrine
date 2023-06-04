@@ -14,12 +14,12 @@ use std::path::{Path, PathBuf};
 // todo compliant with https://hexdocs.pm/dotenvy/dotenv-file-format.html
 
 pub fn import(
-    folder: PathBuf,
+    path: PathBuf,
     password: Option<Secret<String>>,
     file: &PathBuf,
     prefix: Option<&str>,
 ) -> Result<(), Error> {
-    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
+    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
 
     let password = password.unwrap_or_else(|| read_password(&shrine_file));
 
@@ -50,7 +50,7 @@ pub fn import(
         .wrap(shrine, &password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&folder, &shrine_file)
+    save_shrine_file(&path, &shrine_file)
         .map_err(Error::WriteFile)
         .map(|_| ())
 }

@@ -4,6 +4,7 @@ use shrine::controller::init::init;
 use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
 use shrine::controller::set::set;
+use std::env;
 use std::path::PathBuf;
 
 use shrine::Error;
@@ -21,11 +22,11 @@ use std::process::ExitCode;
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
 struct Args {
     /// The password to use; if not provided, will be prompted interactively when needed
-    #[arg(short, long)]
+    #[arg(short = 'P', long)]
     password: Option<String>,
-    /// The folder containing the shrine file
-    #[arg(short, long, default_value = ".")]
-    folder: PathBuf,
+    /// The folder containing the shrine file; default is `SHRINE_PATH` env variable or `.` if not set
+    #[arg(short, long)]
+    path: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
@@ -169,7 +170,9 @@ fn main() -> ExitCode {
     let cli = Args::parse();
 
     let password = cli.password.map(Secret::new);
-    let folder = cli.folder;
+    let path = cli
+        .path
+        .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
 
     let result = match &cli.command {
         Some(Commands::Init {
@@ -177,7 +180,7 @@ fn main() -> ExitCode {
             encryption,
             git,
         }) => init(
-            folder,
+            path,
             password,
             *force,
             encryption.map(|algo| algo.into()),
@@ -188,28 +191,24 @@ fn main() -> ExitCode {
             new_password,
             encryption,
         }) => convert(
-            folder,
+            path,
             password,
             *change_password,
             new_password.clone().map(Secret::new),
             encryption.map(|algo| algo.into()),
         ),
-        Some(Commands::Info { field }) => info(folder, (*field).map(Fields::from)),
-        Some(Commands::Set { key, value }) => set(folder, password, key, value.as_deref()),
-        Some(Commands::Get { key }) => get(folder, password, key),
-        Some(Commands::Ls { pattern }) => ls(folder, password, pattern.as_ref()),
-        Some(Commands::Rm { key }) => rm(folder, password, key),
-        Some(Commands::Import { file, prefix }) => {
-            import(folder, password, file, prefix.as_deref())
-        }
-        Some(Commands::Dump { pattern, config }) => {
-            dump(folder, password, pattern.as_ref(), *config)
-        }
+        Some(Commands::Info { field }) => info(path, (*field).map(Fields::from)),
+        Some(Commands::Set { key, value }) => set(path, password, key, value.as_deref()),
+        Some(Commands::Get { key }) => get(path, password, key),
+        Some(Commands::Ls { pattern }) => ls(path, password, pattern.as_ref()),
+        Some(Commands::Rm { key }) => rm(path, password, key),
+        Some(Commands::Import { file, prefix }) => import(path, password, file, prefix.as_deref()),
+        Some(Commands::Dump { pattern, config }) => dump(path, password, pattern.as_ref(), *config),
         Some(Commands::Config { command }) => match command {
             Some(ConfigCommands::Set { key, value }) => {
-                config::set(folder, password, key, value.as_deref())
+                config::set(path, password, key, value.as_deref())
             }
-            Some(ConfigCommands::Get { key }) => config::get(folder, password, key),
+            Some(ConfigCommands::Get { key }) => config::get(path, password, key),
             _ => panic!(),
         },
         _ => panic!(),

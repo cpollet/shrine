@@ -6,7 +6,7 @@ use secrecy::Secret;
 use std::path::PathBuf;
 
 pub fn ls(
-    folder: PathBuf,
+    path: PathBuf,
     password: Option<Secret<String>>,
     pattern: Option<&String>,
 ) -> Result<(), Error> {
@@ -15,7 +15,7 @@ pub fn ls(
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
-    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
+    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
 
     let password = password.unwrap_or_else(|| read_password(&shrine_file));
 

@@ -6,7 +6,7 @@ use secrecy::Secret;
 use std::path::PathBuf;
 
 pub fn dump(
-    folder: PathBuf,
+    path: PathBuf,
     password: Option<Secret<String>>,
     pattern: Option<&String>,
     private: bool,
@@ -16,7 +16,7 @@ pub fn dump(
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
-    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
+    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
 
     let password = password.unwrap_or_else(|| read_password(&shrine_file));
 
@@ -31,7 +31,7 @@ pub fn dump(
         .collect::<Vec<String>>();
     keys.sort_unstable();
 
-    println!("Shrine `{}/{}`", &folder.display(), SHRINE_FILENAME);
+    println!("Shrine `{}/{}`", &path.display(), SHRINE_FILENAME);
     println!("Secrets:");
     for key in keys.iter() {
         println!(

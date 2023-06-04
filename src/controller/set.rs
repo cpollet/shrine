@@ -7,12 +7,12 @@ use secrecy::Secret;
 use std::path::PathBuf;
 
 pub fn set(
-    folder: PathBuf,
+    path: PathBuf,
     password: Option<Secret<String>>,
     key: &String,
     value: Option<&str>,
 ) -> Result<(), Error> {
-    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
+    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
 
     let password = password.unwrap_or_else(|| read_password(&shrine_file));
 
@@ -22,18 +22,18 @@ pub fn set(
 
     let value = value
         .map(|v| v.to_string())
-        .unwrap_or_else(|| prompt_password("Secret: ").unwrap());
+        .unwrap_or_else(|| prompt_password(format!("Enter `{}` value: ", key)).unwrap());
 
     shrine.set(key.to_string(), value.as_bytes());
 
-    let repository = Repository::new(folder.clone(), &shrine);
+    let repository = Repository::new(path.clone(), &shrine);
 
     let mut shrine_file = shrine_file;
     shrine_file
         .wrap(shrine, &password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&folder, &shrine_file)
+    save_shrine_file(&path, &shrine_file)
         .map_err(Error::WriteFile)
         .map(|_| ())?;
 

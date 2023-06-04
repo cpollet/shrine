@@ -71,7 +71,7 @@ echo -e "${GREEN}ok${RESET}"
 
 echo -n "Create shine in another folder ... "
 mkdir another
-$SHRINE --password="$PASSWORD_1" --folder another init &>/dev/null
+$SHRINE --password="$PASSWORD_1" --path another init &>/dev/null
 [ ! -f another/shrine ] && echo -e "\n${RED}Expected \`another/shrine\` to exist${RESET}" && exit 1
 echo -e "${GREEN}ok${RESET}"
 

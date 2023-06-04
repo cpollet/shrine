@@ -13,13 +13,13 @@ use secrecy::Secret;
 use std::string::ToString;
 
 pub fn init(
-    folder: PathBuf,
+    path: PathBuf,
     password: Option<Secret<String>>,
     force: bool,
     encryption: Option<EncryptionAlgorithm>,
     git: bool,
 ) -> Result<(), Error> {
-    let mut file = PathBuf::from(&folder);
+    let mut file = PathBuf::from(&path);
     file.push(SHRINE_FILENAME);
 
     if !force && Path::new(&file).exists() {
@@ -44,13 +44,13 @@ pub fn init(
         git::write_configuration(&mut shrine);
     }
 
-    let repository = Repository::new(folder.clone(), &shrine);
+    let repository = Repository::new(path.clone(), &shrine);
 
     shrine_file
         .wrap(shrine, &password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    let shrine_filename = save_shrine_file(&folder, &shrine_file).map_err(Error::WriteFile)?;
+    let shrine_filename = save_shrine_file(&path, &shrine_file).map_err(Error::WriteFile)?;
 
     print!("Initialized new shrine in `{}`", shrine_filename.display());
 
@@ -62,7 +62,7 @@ pub fn init(
                 println!();
                 Error::Git(e)
             })?;
-        print!(", in git commit {}", commit);
+        print!("; git commit {}", commit);
     }
 
     println!();

@@ -6,7 +6,7 @@ use secrecy::Secret;
 use std::path::PathBuf;
 
 pub fn convert(
-    folder: PathBuf,
+    path: PathBuf,
     password: Option<Secret<String>>,
     change_password: bool,
     new_password: Option<Secret<String>>,
@@ -19,7 +19,7 @@ pub fn convert(
 
     let mut change_password = change_password;
 
-    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
+    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
     let password = password.unwrap_or_else(|| read_password(&shrine_file));
     let shrine = shrine_file
         .unwrap(&password)
@@ -50,7 +50,7 @@ pub fn convert(
         .wrap(shrine, &password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&folder, &new_shrine_file)
+    save_shrine_file(&path, &new_shrine_file)
         .map_err(Error::WriteFile)
         .map(|_| ())
 }

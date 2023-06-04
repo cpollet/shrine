@@ -5,8 +5,8 @@ use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
-pub fn load_shrine_file(folder: &PathBuf) -> Result<ShrineFile, Error> {
-    let mut file = PathBuf::from(folder);
+pub fn load_shrine_file(path: &PathBuf) -> Result<ShrineFile, Error> {
+    let mut file = PathBuf::from(path);
     file.push(SHRINE_FILENAME);
 
     if !Path::new(&file).exists() {
@@ -23,8 +23,8 @@ pub fn load_shrine_file(folder: &PathBuf) -> Result<ShrineFile, Error> {
     ShrineFile::from_bytes(&bytes).map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))
 }
 
-pub fn save_shrine_file(folder: &PathBuf, shrine_file: &ShrineFile) -> Result<PathBuf, Error> {
-    let mut file = PathBuf::from(folder);
+pub fn save_shrine_file(path: &PathBuf, shrine_file: &ShrineFile) -> Result<PathBuf, Error> {
+    let mut file = PathBuf::from(path);
     file.push(SHRINE_FILENAME);
 
     let bytes = match shrine_file.as_bytes() {

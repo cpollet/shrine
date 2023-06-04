@@ -1,5 +1,5 @@
 use crate::io::load_shrine_file;
-use crate::Error;
+use crate::{Error, SHRINE_FILENAME};
 use std::path::PathBuf;
 
 pub enum Fields {
@@ -9,11 +9,12 @@ pub enum Fields {
     Encryption,
 }
 
-pub fn info(folder: PathBuf, field: Option<Fields>) -> Result<(), Error> {
-    let shrine_file = load_shrine_file(&folder).map_err(Error::ReadFile)?;
+pub fn info(path: PathBuf, field: Option<Fields>) -> Result<(), Error> {
+    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
 
     match field {
         None => {
+            println!("File:          {}/{}", path.display(), SHRINE_FILENAME);
             println!("Version:       {}", shrine_file.version());
             println!("UUID:          {}", shrine_file.uuid());
             println!("Serialization: {}", shrine_file.serialization_format());
