@@ -1,3 +1,4 @@
+use crate::git::Repository;
 use crate::io::{load_shrine_file, save_shrine_file};
 use crate::shrine_file::{EncryptionAlgorithm, ShrineFileBuilder};
 use crate::utils::{read_new_password, read_password};
@@ -46,11 +47,22 @@ pub fn convert(
         password
     };
 
+    let repository = Repository::new(path.clone(), &shrine);
+
     new_shrine_file
         .wrap(shrine, &password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&path, &new_shrine_file)
-        .map_err(Error::WriteFile)
-        .map(|_| ())
+    save_shrine_file(&path, &new_shrine_file).map_err(Error::WriteFile)?;
+
+    if let Some(repository) = repository {
+        if repository.commit_auto() {
+            repository
+                .open()
+                .and_then(|r| r.create_commit("Update shrine"))
+                .map_err(Error::Git)?;
+        }
+    }
+
+    Ok(())
 }
