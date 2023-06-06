@@ -1,9 +1,9 @@
-use crate::shrine::Shrine;
-use crate::SHRINE_FILENAME;
+use crate::{shrine, SHRINE_FILENAME};
 
 use chrono::Local;
 use git2::{Commit, Error, ObjectType, RepositoryInitOptions, Signature, Time};
 
+use crate::shrine::Shrine;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -14,7 +14,7 @@ struct Configuration {
 }
 
 impl Configuration {
-    fn read(shrine: &Shrine) -> Configuration {
+    fn read(shrine: &Shrine<shrine::Open>) -> Configuration {
         Self {
             enabled: shrine
                 .get_private("git.enabled")
@@ -31,7 +31,7 @@ impl Configuration {
         }
     }
 
-    fn write(&self, shrine: &mut Shrine) {
+    fn write(&self, shrine: &mut Shrine<shrine::Open>) {
         shrine.set_private("git.enabled", self.enabled.to_string());
         shrine.set_private("git.commit.auto", self.commit_auto.to_string());
         shrine.set_private("git.push.auto", self.push_auto.to_string());
@@ -61,7 +61,7 @@ pub struct Open {
 }
 
 impl Repository {
-    pub fn new(path: PathBuf, shrine: &Shrine) -> Option<Self> {
+    pub fn new(path: PathBuf, shrine: &Shrine<shrine::Open>) -> Option<Self> {
         if let Some(enabled) = shrine.get_private("git.enabled") {
             if enabled == "true" {
                 return Some(Repository {
@@ -162,6 +162,6 @@ impl Repository<Open> {
     }
 }
 
-pub fn write_configuration(shrine: &mut Shrine) {
+pub fn write_configuration(shrine: &mut Shrine<shrine::Open>) {
     Configuration::default().write(shrine);
 }

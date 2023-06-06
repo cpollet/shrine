@@ -1,4 +1,4 @@
-use crate::io::load_shrine_file;
+use crate::io::load_shrine;
 use crate::utils::read_password;
 use crate::Error;
 use regex::Regex;
@@ -15,12 +15,12 @@ pub fn ls(
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
-    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
+    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
 
-    let password = password.unwrap_or_else(|| read_password(&shrine_file));
+    let password = password.unwrap_or_else(|| read_password(&shrine));
 
-    let shrine = shrine_file
-        .unwrap(&password)
+    let shrine = shrine
+        .open(&password)
         .map_err(|e| Error::InvalidFile(e.to_string()))?;
 
     let mut keys = shrine

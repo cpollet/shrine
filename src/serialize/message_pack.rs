@@ -47,26 +47,3 @@ where
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::serialize::message_pack::MessagePackSerDe;
-    use crate::serialize::SerDe;
-    use crate::shrine::Shrine;
-
-    #[test]
-    fn serde() {
-        let mut shrine = Shrine::new();
-        shrine.set("key", "val");
-
-        let serde = MessagePackSerDe::new();
-
-        let bytes = serde.serialize(&shrine).unwrap();
-        let shrine = serde.deserialize(bytes.as_slice()).unwrap();
-
-        assert_eq!(
-            "val".as_bytes(),
-            shrine.get("key").unwrap().expose_secret_as_bytes()
-        )
-    }
-}

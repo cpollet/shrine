@@ -15,7 +15,7 @@ use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
 use shrine::controller::import::import;
 use shrine::controller::info::{info, Fields};
-use shrine::shrine_file::EncryptionAlgorithm;
+use shrine::shrine::EncryptionAlgorithm;
 use std::process::ExitCode;
 
 #[derive(Clone, Parser)]

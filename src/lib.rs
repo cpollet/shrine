@@ -10,7 +10,6 @@ pub mod git;
 pub mod io;
 pub mod serialize;
 pub mod shrine;
-pub mod shrine_file;
 pub mod utils;
 
 static SHRINE_FILENAME: &str = "shrine";

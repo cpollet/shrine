@@ -1,4 +1,4 @@
-use crate::io::{load_shrine_file, save_shrine_file};
+use crate::io::{load_shrine, save_shrine};
 use crate::utils::read_password;
 use crate::Error;
 
@@ -19,12 +19,12 @@ pub fn import(
     file: &PathBuf,
     prefix: Option<&str>,
 ) -> Result<(), Error> {
-    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
+    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
 
-    let password = password.unwrap_or_else(|| read_password(&shrine_file));
+    let password = password.unwrap_or_else(|| read_password(&shrine));
 
-    let mut shrine = shrine_file
-        .unwrap(&password)
+    let mut shrine = shrine
+        .open(&password)
         .map_err(|e| Error::InvalidFile(e.to_string()))?;
 
     let prefix = prefix.unwrap_or_default();
@@ -45,12 +45,11 @@ pub fn import(
         shrine.set(format!("{}{}", prefix, key), value.as_bytes())
     }
 
-    let mut shrine_file = shrine_file;
-    shrine_file
-        .wrap(shrine, &password)
+    let shrine = shrine
+        .close(&password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&path, &shrine_file)
+    save_shrine(&path, &shrine)
         .map_err(Error::WriteFile)
         .map(|_| ())
 }

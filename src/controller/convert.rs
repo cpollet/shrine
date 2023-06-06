@@ -1,6 +1,6 @@
 use crate::git::Repository;
-use crate::io::{load_shrine_file, save_shrine_file};
-use crate::shrine_file::{EncryptionAlgorithm, ShrineFileBuilder};
+use crate::io::{load_shrine, save_shrine};
+use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
 use crate::utils::{read_new_password, read_password};
 use crate::Error;
 use secrecy::Secret;
@@ -20,40 +20,42 @@ pub fn convert(
 
     let mut change_password = change_password;
 
-    let shrine_file = load_shrine_file(&path).map_err(Error::ReadFile)?;
-    let password = password.unwrap_or_else(|| read_password(&shrine_file));
-    let shrine = shrine_file
-        .unwrap(&password)
+    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
+    let password = password.unwrap_or_else(|| read_password(&shrine));
+    let shrine = shrine
+        .open(&password)
         .map_err(|e| Error::InvalidFile(e.to_string()))?;
 
-    let shrine_file_builder =
-        ShrineFileBuilder::new().with_encryption_algorithm(shrine_file.encryption_algorithm());
+    let shrine_builder =
+        ShrineBuilder::new().with_encryption_algorithm(shrine.encryption_algorithm());
 
-    let shrine_file_builder = match encryption_algorithm {
-        Some(a) if shrine_file.encryption_algorithm() != a => {
+    let shrine_builder = match encryption_algorithm {
+        Some(a) if shrine.encryption_algorithm() != a => {
             change_password = true;
-            shrine_file_builder.with_encryption_algorithm(a)
+            shrine_builder.with_encryption_algorithm(a)
         }
-        _ => shrine_file_builder,
+        _ => shrine_builder,
     };
 
-    let mut new_shrine_file = shrine_file_builder.build();
+    let mut new_shrine = shrine_builder.build();
 
     let password = if change_password {
         new_password
             .map(Ok)
-            .unwrap_or_else(|| read_new_password(&new_shrine_file))?
+            .unwrap_or_else(|| read_new_password(&new_shrine))?
     } else {
         password
     };
 
-    let repository = Repository::new(path.clone(), &shrine);
+    shrine.move_to(&mut new_shrine);
 
-    new_shrine_file
-        .wrap(shrine, &password)
+    let repository = Repository::new(path.clone(), &new_shrine);
+
+    let new_shrine = new_shrine
+        .close(&password)
         .map_err(|e| Error::Update(e.to_string()))?;
 
-    save_shrine_file(&path, &new_shrine_file).map_err(Error::WriteFile)?;
+    save_shrine(&path, &new_shrine).map_err(Error::WriteFile)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {

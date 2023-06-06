@@ -1,11 +1,11 @@
-use crate::shrine_file::{FileFormatError, ShrineFile};
+use crate::shrine::{Closed, FileFormatError, Shrine};
 use crate::SHRINE_FILENAME;
 use std::fs::File;
 
 use std::io::{Error, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
-pub fn load_shrine_file(path: &PathBuf) -> Result<ShrineFile, Error> {
+pub fn load_shrine(path: &PathBuf) -> Result<Shrine<Closed>, Error> {
     let mut file = PathBuf::from(path);
     file.push(SHRINE_FILENAME);
 
@@ -20,14 +20,14 @@ pub fn load_shrine_file(path: &PathBuf) -> Result<ShrineFile, Error> {
         bytes
     };
 
-    ShrineFile::from_bytes(&bytes).map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))
+    Shrine::from_bytes(&bytes).map_err(|e| Error::new(ErrorKind::InvalidData, e.to_string()))
 }
 
-pub fn save_shrine_file(path: &PathBuf, shrine_file: &ShrineFile) -> Result<PathBuf, Error> {
+pub fn save_shrine(path: &PathBuf, shrine: &Shrine<Closed>) -> Result<PathBuf, Error> {
     let mut file = PathBuf::from(path);
     file.push(SHRINE_FILENAME);
 
-    let bytes = match shrine_file.as_bytes() {
+    let bytes = match shrine.as_bytes() {
         Ok(bytes) => Ok(bytes),
         Err(FileFormatError::Serialization(e)) => Err(e),
         Err(e) => Err(Error::new(ErrorKind::Other, e.to_string())),

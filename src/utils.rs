@@ -1,4 +1,4 @@
-use crate::shrine_file::ShrineFile;
+use crate::shrine::{Closed, Shrine};
 use crate::Error;
 use csv::ReaderBuilder;
 use secrecy::Secret;
@@ -19,7 +19,7 @@ struct Row {
     password: String,
 }
 
-pub fn read_password(shrine_file: &ShrineFile) -> Secret<String> {
+pub fn read_password(shrine_file: &Shrine<Closed>) -> Secret<String> {
     if !shrine_file.requires_password() {
         return Secret::from_str("").unwrap();
     }
@@ -85,7 +85,7 @@ pub fn read_password(shrine_file: &ShrineFile) -> Secret<String> {
     read_password_from_tty()
 }
 
-pub fn read_new_password(shrine_file: &ShrineFile) -> Result<Secret<String>, Error> {
+pub fn read_new_password(shrine_file: &Shrine) -> Result<Secret<String>, Error> {
     if shrine_file.requires_password() {
         let password1 = rpassword::prompt_password("Enter new shrine password: ").unwrap();
         let password2 = rpassword::prompt_password("Enter new shrine password (again): ").unwrap();
