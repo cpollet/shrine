@@ -286,11 +286,11 @@ impl Shrine<Open> {
     ///
     /// assert!(shrine.get("key").is_none());
     /// ```
-    pub fn remove<'k, K>(&mut self, key: K)
+    pub fn remove<'k, K>(&mut self, key: K) -> bool
     where
         K: Into<&'k str>,
     {
-        self.payload.0.remove(key.into());
+        self.payload.0.remove(key.into())
     }
 
     /// Return the keys count.

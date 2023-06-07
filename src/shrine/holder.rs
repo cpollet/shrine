@@ -47,11 +47,11 @@ impl Holder {
     }
 
     /// Removes a secret.
-    pub fn remove<'k, K>(&mut self, key: K)
+    pub fn remove<'k, K>(&mut self, key: K) -> bool
     where
         K: Into<&'k str>,
     {
-        self.secrets.remove(key.into());
+        self.secrets.remove(key.into()).is_some()
     }
 
     /// Returns the count of secrets in the holder.

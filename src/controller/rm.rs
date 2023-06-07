@@ -16,7 +16,9 @@ pub fn rm(
     let mut shrine = shrine.open(&password)?;
     let repository = Repository::new(path.clone(), &shrine);
 
-    shrine.remove(key.as_ref());
+    if !shrine.remove(key.as_ref()) {
+        return Err(Error::KeyNotFound(key.to_string()));
+    }
     shrine.close(&password)?.to_path(&path)?;
 
     if let Some(repository) = repository {
