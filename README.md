@@ -1,6 +1,7 @@
 # shrine
 Secrets manager written in rust.
 
+[![Crates info](https://img.shields.io/crates/v/shrine.svg)](https://crates.io/crates/shrine)
 ![Rust](https://img.shields.io/github/languages/top/cpollet/shrine?color=orange)
 [![CI](https://github.com/cpollet/shrine/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/cpollet/shrine/actions/workflows/test.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/licence-Apache%202.0-blue)](LICENSE)
