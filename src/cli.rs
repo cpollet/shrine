@@ -5,6 +5,7 @@ use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
 use shrine::controller::set::set;
 use std::env;
+
 use std::path::PathBuf;
 
 use shrine::Error;
@@ -15,7 +16,7 @@ use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
 use shrine::controller::import::import;
 use shrine::controller::info::{info, Fields};
-use shrine::shrine::EncryptionAlgorithm;
+use shrine::shrine::{EncryptionAlgorithm, Shrine};
 use std::process::ExitCode;
 
 #[derive(Clone, Parser)]
@@ -167,14 +168,22 @@ enum ConfigCommands {
 
 #[allow(unused)]
 fn main() -> ExitCode {
-    let cli = Args::parse();
+    match exec(Args::parse()) {
+        Ok(_) => ExitCode::from(0),
+        Err(e) => {
+            eprintln!("{}", e);
+            ExitCode::from(1)
+        }
+    }
+}
 
+fn exec(cli: Args) -> Result<(), Error> {
     let password = cli.password.map(Secret::new);
     let path = cli
         .path
         .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
 
-    let result = match &cli.command {
+    match &cli.command {
         Some(Commands::Init {
             force,
             encryption,
@@ -191,69 +200,53 @@ fn main() -> ExitCode {
             new_password,
             encryption,
         }) => convert(
+            Shrine::from_path(&path)?,
             path,
             password,
             *change_password,
             new_password.clone().map(Secret::new),
             encryption.map(|algo| algo.into()),
         ),
-        Some(Commands::Info { field }) => info(path, (*field).map(Fields::from)),
-        Some(Commands::Set { key, value }) => set(path, password, key, value.as_deref()),
-        Some(Commands::Get { key }) => get(path, password, key),
-        Some(Commands::Ls { pattern }) => ls(path, password, pattern.as_ref()),
-        Some(Commands::Rm { key }) => rm(path, password, key),
-        Some(Commands::Import { file, prefix }) => import(path, password, file, prefix.as_deref()),
-        Some(Commands::Dump { pattern, config }) => dump(path, password, pattern.as_ref(), *config),
+        Some(Commands::Info { field }) => {
+            info(Shrine::from_path(&path)?, path, (*field).map(Fields::from))
+        }
+        Some(Commands::Set { key, value }) => set(
+            Shrine::from_path(&path)?,
+            path,
+            password,
+            key,
+            value.as_deref(),
+        ),
+        Some(Commands::Get { key }) => get(Shrine::from_path(&path)?, password, key),
+        Some(Commands::Ls { pattern }) => ls(Shrine::from_path(&path)?, password, pattern.as_ref()),
+        Some(Commands::Rm { key }) => rm(Shrine::from_path(&path)?, path, password, key),
+        Some(Commands::Import { file, prefix }) => import(
+            Shrine::from_path(&path)?,
+            path,
+            password,
+            file,
+            prefix.as_deref(),
+        ),
+        Some(Commands::Dump { pattern, config }) => dump(
+            Shrine::from_path(&path)?,
+            path,
+            password,
+            pattern.as_ref(),
+            *config,
+        ),
         Some(Commands::Config { command }) => match command {
-            Some(ConfigCommands::Set { key, value }) => {
-                config::set(path, password, key, value.as_deref())
+            Some(ConfigCommands::Set { key, value }) => config::set(
+                Shrine::from_path(&path)?,
+                path,
+                password,
+                key,
+                value.as_deref(),
+            ),
+            Some(ConfigCommands::Get { key }) => {
+                config::get(Shrine::from_path(&path)?, path, password, key)
             }
-            Some(ConfigCommands::Get { key }) => config::get(path, password, key),
             _ => panic!(),
         },
         _ => panic!(),
-    };
-
-    match result {
-        Ok(_) => ExitCode::from(0),
-        Err(Error::FileAlreadyExists(filename)) => {
-            eprintln!(
-                "Shrine file `{}` already exists; use --force flag to override",
-                filename
-            );
-            ExitCode::from(1)
-        }
-        Err(Error::WriteFile(e)) => {
-            eprintln!("Could not write shrine: {}", e);
-            ExitCode::from(1)
-        }
-        Err(Error::ReadFile(e)) => {
-            eprintln!("Could not read shrine: {}", e);
-            ExitCode::from(1)
-        }
-        Err(Error::InvalidFile(e)) => {
-            eprintln!("Could not read shrine: {}", e);
-            ExitCode::from(1)
-        }
-        Err(Error::Update(message)) => {
-            eprintln!("Could not update shrine: `{}`", message);
-            ExitCode::from(1)
-        }
-        Err(Error::KeyNotFound(key)) => {
-            eprintln!("Key `{}` does not exist", key);
-            ExitCode::from(1)
-        }
-        Err(Error::InvalidPattern(e)) => {
-            eprintln!("Invalid pattern: {}", e);
-            ExitCode::from(1)
-        }
-        Err(Error::InvalidPassword) => {
-            eprintln!("Password invalid");
-            ExitCode::from(1)
-        }
-        Err(Error::Git(e)) => {
-            eprintln!("Git error: {}", e.message());
-            ExitCode::from(1)
-        }
     }
 }

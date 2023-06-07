@@ -1,5 +1,5 @@
 use crate::git::Repository;
-use crate::io::{load_shrine, save_shrine};
+use crate::shrine::{Closed, Shrine};
 use crate::utils::read_password;
 use crate::Error;
 use rpassword::prompt_password;
@@ -8,18 +8,15 @@ use std::io::{stdout, Write};
 use std::path::PathBuf;
 
 pub fn set(
+    shrine: Shrine<Closed>,
     path: PathBuf,
     password: Option<Secret<String>>,
     key: &String,
     value: Option<&str>,
 ) -> Result<(), Error> {
-    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
-
     let password = password.unwrap_or_else(|| read_password(&shrine));
 
-    let mut shrine = shrine
-        .open(&password)
-        .map_err(|e| Error::InvalidFile(e.to_string()))?;
+    let mut shrine = shrine.open(&password)?;
 
     let value = value
         .map(|v| v.to_string())
@@ -29,38 +26,30 @@ pub fn set(
 
     let repository = Repository::new(path.clone(), &shrine);
 
-    // let mut shrine_file = shrine;
-    // shrine_file
-    //     .wrap(shrine, &password)
-    //     .map_err(|e| Error::Update(e.to_string()))?;
-    let shrine = shrine
-        .close(&password)
-        .map_err(|e| Error::Update(e.to_string()))?;
+    let shrine = shrine.close(&password)?;
 
-    save_shrine(&path, &shrine)
-        .map_err(Error::WriteFile)
-        .map(|_| ())?;
+    shrine.to_path(&path)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {
             repository
                 .open()
-                .and_then(|r| r.create_commit("Update shrine"))
-                .map_err(Error::Git)?;
+                .and_then(|r| r.create_commit("Update shrine"))?;
         }
     }
 
     Ok(())
 }
 
-pub fn get(path: PathBuf, password: Option<Secret<String>>, key: &String) -> Result<(), Error> {
-    let shrine_file = load_shrine(&path).map_err(Error::ReadFile)?;
+pub fn get(
+    shrine: Shrine<Closed>,
+    _path: PathBuf,
+    password: Option<Secret<String>>,
+    key: &String,
+) -> Result<(), Error> {
+    let password = password.unwrap_or_else(|| read_password(&shrine));
 
-    let password = password.unwrap_or_else(|| read_password(&shrine_file));
-
-    let shrine = shrine_file
-        .open(&password)
-        .map_err(|e| Error::InvalidFile(e.to_string()))?;
+    let shrine = shrine.open(&password)?;
 
     let secret = shrine
         .get_private(key.as_ref())

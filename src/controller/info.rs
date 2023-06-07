@@ -1,4 +1,4 @@
-use crate::io::load_shrine;
+use crate::shrine::{Closed, Shrine};
 use crate::{Error, SHRINE_FILENAME};
 use std::path::PathBuf;
 
@@ -9,9 +9,7 @@ pub enum Fields {
     Encryption,
 }
 
-pub fn info(path: PathBuf, field: Option<Fields>) -> Result<(), Error> {
-    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
-
+pub fn info(shrine: Shrine<Closed>, path: PathBuf, field: Option<Fields>) -> Result<(), Error> {
     match field {
         None => {
             println!("File:          {}/{}", path.display(), SHRINE_FILENAME);

@@ -6,7 +6,8 @@ use pbkdf2::pbkdf2_hmac_array;
 use secrecy::{ExposeSecret, Secret};
 use sha2::Sha256;
 
-use crate::encrypt::{EncDec, Error};
+use crate::encrypt::EncDec;
+use crate::Error;
 
 pub struct Aes<'pwd> {
     password: &'pwd Secret<String>,
@@ -34,7 +35,7 @@ impl<'pwd> EncDec for Aes<'pwd> {
 
         let ciphertext = cipher
             .encrypt(Nonce::from_slice(&nonce), self.payload(cleartext))
-            .map_err(|e| Error::Encrypt(e.to_string()))?;
+            .map_err(|_| Error::CryptoWrite)?;
 
         let mut bytes = Vec::with_capacity(KEY_SALT_LEN + NONCE_LEN + ciphertext.len());
 
@@ -46,10 +47,6 @@ impl<'pwd> EncDec for Aes<'pwd> {
     }
 
     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
-        if ciphertext.len() < KEY_SALT_LEN + NONCE_LEN {
-            return Err(Error::Decrypt("Invalid ciphertext".to_string()));
-        }
-
         let salt = &ciphertext[0..KEY_SALT_LEN];
         let nonce = &ciphertext[KEY_SALT_LEN..KEY_SALT_LEN + NONCE_LEN];
         let ciphertext = &ciphertext[KEY_SALT_LEN + NONCE_LEN..];
@@ -57,7 +54,7 @@ impl<'pwd> EncDec for Aes<'pwd> {
         let cipher = self.cipher(salt);
         cipher
             .decrypt(Nonce::from_slice(nonce), self.payload(ciphertext))
-            .map_err(|e| Error::Decrypt(e.to_string()))
+            .map_err(|_| Error::CryptoRead)
     }
 }
 

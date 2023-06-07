@@ -34,16 +34,10 @@ where
     D: Serialize + for<'d> Deserialize<'d>,
 {
     fn serialize(&self, data: &D) -> Result<Vec<u8>, Error> {
-        match rmp_serde::to_vec(data) {
-            Ok(bytes) => Ok(bytes),
-            Err(e) => Err(Error::Serialization(e.to_string())),
-        }
+        rmp_serde::to_vec(data).map_err(Error::MessagePackWrite) // todo can we do better?
     }
 
     fn deserialize(&self, bytes: &[u8]) -> Result<D, Error> {
-        match rmp_serde::from_slice::<D>(bytes) {
-            Ok(data) => Ok(data),
-            Err(e) => Err(Error::Deserialization(e.to_string())),
-        }
+        rmp_serde::from_slice::<D>(bytes).map_err(Error::MessagePackRead) // todo can we do better?
     }
 }

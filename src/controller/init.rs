@@ -1,14 +1,10 @@
+use crate::git::Repository;
 use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
+use crate::utils::read_new_password;
 use crate::{git, Error, SHRINE_FILENAME};
+use secrecy::Secret;
 use std::path::Path;
 use std::path::PathBuf;
-
-use crate::utils::read_new_password;
-
-use crate::git::Repository;
-use crate::io::save_shrine;
-
-use secrecy::Secret;
 use std::string::ToString;
 
 pub fn init(
@@ -37,30 +33,22 @@ pub fn init(
         .map(Ok)
         .unwrap_or_else(|| read_new_password(&shrine))?;
 
-    // let mut shrine = Holder::new();
-
     if git {
         git::write_configuration(&mut shrine);
     }
 
     let repository = Repository::new(path.clone(), &shrine);
 
-    let shrine = shrine
-        .close(&password)
-        .map_err(|e| Error::Update(e.to_string()))?;
+    let shrine = shrine.close(&password)?;
 
-    let shrine_filename = save_shrine(&path, &shrine).map_err(Error::WriteFile)?;
+    shrine.to_path(&path)?;
 
-    print!("Initialized new shrine in `{}`", shrine_filename.display());
+    print!("Initialized new shrine in `{}`", file.display());
 
     if let Some(repository) = repository {
         let commit = repository
             .open()
-            .and_then(|r| r.create_commit("Initialize shrine"))
-            .map_err(|e| {
-                println!();
-                Error::Git(e)
-            })?;
+            .and_then(|r| r.create_commit("Initialize shrine"))?;
         print!("; git commit {}", commit);
     }
 

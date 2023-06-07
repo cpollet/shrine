@@ -1,5 +1,6 @@
 mod holder;
 
+use crate::bytes::SecretBytes;
 use crate::encrypt::aes::Aes;
 use crate::encrypt::plain::Plain;
 use crate::encrypt::EncDec;
@@ -8,18 +9,14 @@ use crate::serialize::json::JsonSerDe;
 use crate::serialize::message_pack::MessagePackSerDe;
 use crate::serialize::SerDe;
 use crate::shrine::holder::Holder;
+use crate::{Error, SHRINE_FILENAME};
+use borsh::{BorshDeserialize, BorshSerialize};
+use secrecy::Secret;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
+
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-
-use borsh::{BorshDeserialize, BorshSerialize};
-
-use secrecy::Secret;
-
-use crate::bytes::SecretBytes;
-use crate::SHRINE_FILENAME;
-use thiserror::Error;
 use uuid::Uuid;
 
 /// Max supported file version
@@ -73,7 +70,7 @@ impl<Payload> Shrine<Payload> {
 
 impl Shrine<Closed> {
     /// Write the shrine to a path.
-    pub fn to_path<P>(&self, path: P) -> Result<(), FileFormatError>
+    pub fn to_path<P>(&self, path: P) -> Result<(), Error>
     where
         P: AsRef<Path>,
     {
@@ -83,23 +80,22 @@ impl Shrine<Closed> {
         let bytes = self.as_bytes()?;
 
         File::create(&file)
-            .map_err(|_| FileFormatError::InvalidFile)?
+            .map_err(Error::IoWrite)?
             .write_all(&bytes)
-            .map_err(|_| FileFormatError::InvalidFile)?;
+            .map_err(Error::IoWrite)?;
 
         Ok(())
     }
 
     /// Serializes the `Shrine`.
-    pub fn as_bytes(&self) -> Result<Vec<u8>, FileFormatError> {
+    pub fn as_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::new();
-        self.serialize(&mut buffer)
-            .map_err(FileFormatError::Serialization)?;
+        self.serialize(&mut buffer).map_err(Error::IoWrite)?;
         Ok(buffer)
     }
 
     /// Read a shrine from a path.
-    pub fn from_path<P>(path: P) -> Result<Self, FileFormatError>
+    pub fn from_path<P>(path: P) -> Result<Self, Error>
     where
         P: AsRef<Path>,
     {
@@ -107,15 +103,13 @@ impl Shrine<Closed> {
         file.push(SHRINE_FILENAME);
 
         if !Path::new(&file).exists() {
-            // fixme Err(Error::new(ErrorKind::NotFound, file.display().to_string()));
-            return Err(FileFormatError::InvalidFile);
+            return Err(Error::FileNotFound(path.as_ref().to_path_buf()));
         }
 
         let bytes = {
-            let mut file = File::open(&file).map_err(|_| FileFormatError::InvalidFile)?;
+            let mut file = File::open(&file).map_err(Error::IoRead)?;
             let mut bytes = Vec::new();
-            file.read_to_end(&mut bytes)
-                .map_err(|_| FileFormatError::InvalidFile)?;
+            file.read_to_end(&mut bytes).map_err(Error::IoRead)?;
             bytes
         };
 
@@ -123,16 +117,16 @@ impl Shrine<Closed> {
     }
 
     /// Deserializes a slice of bytes into a `Shrine`.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, FileFormatError> {
-        if &bytes[0..6] != "shrine".as_bytes() || bytes.len() < 7 {
-            return Err(FileFormatError::InvalidFile);
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.len() < 6 || &bytes[0..6] != "shrine".as_bytes() {
+            return Err(Error::Read());
         }
 
         if bytes[6] > VERSION {
-            return Err(FileFormatError::UnsupportedVersion(bytes[6]));
+            return Err(Error::UnsupportedVersion(bytes[6]));
         }
 
-        Self::try_from_slice(bytes).map_err(FileFormatError::Deserialization)
+        Self::try_from_slice(bytes).map_err(Error::IoRead)
     }
 
     /// Decrypt and deserialize the `Shrine`.
@@ -154,15 +148,13 @@ impl Shrine<Closed> {
             .metadata
             .encryption_algorithm()
             .encryptor(password, None)
-            .decrypt(&self.payload.0)
-            .map_err(|e| Error::Read(e.to_string()))?;
+            .decrypt(&self.payload.0)?;
 
         let holder = self
             .metadata
             .serialization_format()
             .serializer()
-            .deserialize(&bytes)
-            .map_err(|e| Error::Read(e.to_string()))?;
+            .deserialize(&bytes)?;
 
         Ok(Shrine {
             magic_number: self.magic_number,
@@ -205,22 +197,17 @@ impl Shrine<Open> {
     ///
     /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "val".as_bytes());
     pub fn close(self, password: &Secret<String>) -> Result<Shrine<Closed>, Error> {
-        let bytes = match self
+        let bytes = self
             .metadata
             .serialization_format()
             .serializer()
-            .serialize(&self.payload.0)
-        {
-            Ok(bytes) => bytes,
-            Err(e) => return Err(Error::Write(e.to_string())),
-        };
+            .serialize(&self.payload.0)?;
 
         let bytes = self
             .metadata
             .encryption_algorithm()
             .encryptor(password, None)
-            .encrypt(&bytes)
-            .map_err(|e| Error::Write(e.to_string()))?;
+            .encrypt(&bytes)?;
 
         Ok(Shrine {
             magic_number: self.magic_number,
@@ -516,18 +503,6 @@ impl Display for SerializationFormat {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum FileFormatError {
-    #[error("could not serialize shrine file content: {0}")]
-    Serialization(std::io::Error),
-    #[error("could not deserialize shrine file: {0}")]
-    Deserialization(std::io::Error),
-    #[error("the provided file is not a valid shrine archive")]
-    InvalidFile,
-    #[error("the provided file version {0} is not supported (max {})", VERSION)]
-    UnsupportedVersion(u8),
-}
-
 #[derive(Default)]
 pub struct ShrineBuilder {
     encryption_algorithm: EncryptionAlgorithm,
@@ -558,18 +533,6 @@ impl ShrineBuilder {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    Read(String),
-    Write(String),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -588,10 +551,7 @@ mod tests {
         let shrine = Shrine::from_bytes(bytes.as_slice());
 
         assert!(shrine.is_err());
-        assert_eq!(
-            shrine.unwrap_err().to_string(),
-            "the provided file is not a valid shrine archive"
-        );
+        assert_eq!(shrine.unwrap_err().to_string(), "Could not read shrine");
     }
 
     #[test]
@@ -610,11 +570,7 @@ mod tests {
         assert!(shrine.is_err());
         assert_eq!(
             shrine.unwrap_err().to_string(),
-            format!(
-                "the provided file version {} is not supported (max {})",
-                VERSION + 1,
-                VERSION
-            )
+            format!("Unsupported shrine version: {}", VERSION + 1)
         );
     }
 

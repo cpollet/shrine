@@ -1,4 +1,4 @@
-use crate::io::load_shrine;
+use crate::shrine::{Closed, Shrine};
 use crate::utils::read_password;
 use crate::{Error, SHRINE_FILENAME};
 use regex::Regex;
@@ -6,6 +6,7 @@ use secrecy::Secret;
 use std::path::PathBuf;
 
 pub fn dump(
+    shrine: Shrine<Closed>,
     path: PathBuf,
     password: Option<Secret<String>>,
     pattern: Option<&String>,
@@ -16,13 +17,9 @@ pub fn dump(
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
-    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
-
     let password = password.unwrap_or_else(|| read_password(&shrine));
 
-    let shrine = shrine
-        .open(&password)
-        .map_err(|e| Error::InvalidFile(e.to_string()))?;
+    let shrine = shrine.open(&password)?;
 
     let mut keys = shrine
         .keys()

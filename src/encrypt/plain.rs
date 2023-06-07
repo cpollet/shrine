@@ -1,4 +1,5 @@
-use crate::encrypt::{EncDec, Error};
+use crate::encrypt::EncDec;
+use crate::Error;
 
 #[derive(Default)]
 pub struct Plain {}

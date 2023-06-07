@@ -1,5 +1,5 @@
 use crate::git::Repository;
-use crate::io::{load_shrine, save_shrine};
+use crate::shrine::{Closed, Shrine};
 use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
 use crate::utils::{read_new_password, read_password};
 use crate::Error;
@@ -7,6 +7,7 @@ use secrecy::Secret;
 use std::path::PathBuf;
 
 pub fn convert(
+    shrine: Shrine<Closed>,
     path: PathBuf,
     password: Option<Secret<String>>,
     change_password: bool,
@@ -20,11 +21,8 @@ pub fn convert(
 
     let mut change_password = change_password;
 
-    let shrine = load_shrine(&path).map_err(Error::ReadFile)?;
     let password = password.unwrap_or_else(|| read_password(&shrine));
-    let shrine = shrine
-        .open(&password)
-        .map_err(|e| Error::InvalidFile(e.to_string()))?;
+    let shrine = shrine.open(&password)?;
 
     let shrine_builder =
         ShrineBuilder::new().with_encryption_algorithm(shrine.encryption_algorithm());
@@ -51,18 +49,15 @@ pub fn convert(
 
     let repository = Repository::new(path.clone(), &new_shrine);
 
-    let new_shrine = new_shrine
-        .close(&password)
-        .map_err(|e| Error::Update(e.to_string()))?;
+    let new_shrine = new_shrine.close(&password)?;
 
-    save_shrine(&path, &new_shrine).map_err(Error::WriteFile)?;
+    new_shrine.to_path(&path)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {
             repository
                 .open()
-                .and_then(|r| r.create_commit("Update shrine"))
-                .map_err(Error::Git)?;
+                .and_then(|r| r.create_commit("Update shrine"))?;
         }
     }
 

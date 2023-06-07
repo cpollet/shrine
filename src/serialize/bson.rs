@@ -1,5 +1,6 @@
 use crate::serialize::{Error, SerDe};
 use bson::{Bson, RawDocumentBuf};
+use serde::ser::Error as BsonError;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
@@ -41,18 +42,15 @@ where
                     .unwrap()
                     .as_bytes()
                     .to_vec()),
-                _ => Err(Error::Serialization(
-                    "Unexpected Bson alternative".to_string(),
-                )),
+                _ => Err(Error::BsonWrite(bson::ser::Error::custom(
+                    "Unexpected Bson alternative",
+                ))),
             },
-            Err(e) => Err(Error::Serialization(e.to_string())),
+            Err(e) => Err(Error::BsonWrite(e)), // todo can we do better?
         }
     }
 
     fn deserialize(&self, bytes: &[u8]) -> Result<D, Error> {
-        match bson::from_slice::<D>(bytes) {
-            Ok(data) => Ok(data),
-            Err(e) => Err(Error::Deserialization(e.to_string())),
-        }
+        bson::from_slice::<D>(bytes).map_err(Error::BsonRead) // todo can we do better?
     }
 }
