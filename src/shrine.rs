@@ -457,7 +457,10 @@ impl EncryptionAlgorithm {
                 //  something similar to https://github.com/cpollet/shrine.git#ae9ef36cc813d90a47c13315158f8dc3f87ee81e
                 Box::new(Aes::new(password, aad))
             }
-            EncryptionAlgorithm::Plain => Box::new(Plain::new()),
+            EncryptionAlgorithm::Plain => {
+                println!("WARNING: the shrine is not encrypted!");
+                Box::new(Plain::new())
+            }
         }
     }
 }
