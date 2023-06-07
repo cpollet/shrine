@@ -39,9 +39,7 @@ pub fn init(
 
     let repository = Repository::new(path.clone(), &shrine);
 
-    let shrine = shrine.close(&password)?;
-
-    shrine.to_path(&path)?;
+    shrine.close(&password)?.to_path(&path)?;
 
     print!("Initialized new shrine in `{}`", file.display());
 

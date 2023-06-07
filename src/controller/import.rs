@@ -37,7 +37,5 @@ pub fn import(
         shrine.set(format!("{}{}", prefix, key), value.as_bytes())
     }
 
-    let shrine = shrine.close(&password)?;
-
-    shrine.to_path(path)
+    shrine.close(&password)?.to_path(path)
 }

@@ -49,9 +49,7 @@ pub fn convert(
 
     let repository = Repository::new(path.clone(), &new_shrine);
 
-    let new_shrine = new_shrine.close(&password)?;
-
-    new_shrine.to_path(&path)?;
+    new_shrine.close(&password)?.to_path(&path)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {

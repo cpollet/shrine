@@ -17,18 +17,14 @@ pub fn set(
     let password = password.unwrap_or_else(|| read_password(&shrine));
 
     let mut shrine = shrine.open(&password)?;
+    let repository = Repository::new(path.clone(), &shrine);
 
     let value = value
         .map(|v| v.to_string())
         .unwrap_or_else(|| prompt_password("Value: ").unwrap());
 
     shrine.set_private(key.to_string(), value);
-
-    let repository = Repository::new(path.clone(), &shrine);
-
-    let shrine = shrine.close(&password)?;
-
-    shrine.to_path(&path)?;
+    shrine.close(&password)?.to_path(&path)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {

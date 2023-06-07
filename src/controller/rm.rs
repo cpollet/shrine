@@ -14,14 +14,10 @@ pub fn rm(
     let password = password.unwrap_or_else(|| read_password(&shrine));
 
     let mut shrine = shrine.open(&password)?;
-
-    shrine.remove(key.as_ref());
-
     let repository = Repository::new(path.clone(), &shrine);
 
-    let shrine = shrine.close(&password)?;
-
-    shrine.to_path(&path)?;
+    shrine.remove(key.as_ref());
+    shrine.close(&password)?.to_path(&path)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {

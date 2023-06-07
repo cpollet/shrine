@@ -78,32 +78,41 @@ echo -e "${GREEN}ok${RESET}"
 echo -n "Create shine with git repo ... "
 tmpdir=$(mktemp --directory)
 pushd "$tmpdir" >/dev/null || exit 1
-$SHRINE --password="$PASSWORD_1" init --git &>/dev/null
-! git status &>/dev/null && echo -e "\n${RED}Expected \`$(pwd)/with-git\` to be a git repository${RESET}" && exit 1
-! git log -n1 | grep "Initialize shrine" &>/dev/null && echo -e "\n${RED}Expected \`Initialize shrine\`${RESET}" && exit 1
-echo -e "${GREEN}ok${RESET}"
+  $SHRINE --password="$PASSWORD_1" init --git &>/dev/null
+  ! git status &>/dev/null && echo -e "\n${RED}Expected \`$(pwd)/with-git\` to be a git repository${RESET}" && exit 1
+  ! git log -n1 | grep "Initialize shrine" &>/dev/null && echo -e "\n${RED}Expected \`Initialize shrine\`${RESET}" && exit 1
+  echo -e "${GREEN}ok${RESET}"
 
-echo -n "Update shine with git repo ... "
-$SHRINE --password="$PASSWORD_1" set key val &>/dev/null
-! git log -n1 | grep "Update shrine" &>/dev/null && echo -e "\n${RED}Expected \`Update shrine\`${RESET}" && exit 1
-echo -e "${GREEN}ok${RESET}"
+  echo -n "Update shine with git repo ... "
+  $SHRINE --password="$PASSWORD_1" set key val &>/dev/null
+  ! git log -n1 | grep "Update shrine" &>/dev/null && echo -e "\n${RED}Expected \`Update shrine\`${RESET}" && exit 1
+  echo -e "${GREEN}ok${RESET}"
+popd >/dev/null || exit 1
+rm -rf "$tmpdir"
 
 echo -n "Disable auto commit ... "
-$SHRINE --password="$PASSWORD_1" config set git.commit.auto false &>/dev/null
-$SHRINE --password="$PASSWORD_1" config set key2 val2 &>/dev/null
-output="$(git rev-list HEAD --count)"
-[ "$output" != "2" ] && echo -e "\n${RED}Expected 2 commits, got $output${RESET}" && exit 1
-echo -e "${GREEN}ok${RESET}"
+tmpdir=$(mktemp --directory)
+pushd "$tmpdir" >/dev/null || exit 1
+  $SHRINE --password="$PASSWORD_1" init --force --git &>/dev/null
+  $SHRINE --password="$PASSWORD_1" config set git.commit.auto false &>/dev/null
+  $SHRINE --password="$PASSWORD_1" config set key val &>/dev/null
+  output="$(git rev-list HEAD --count)"
+  [ "$output" != "2" ] && echo -e "\n${RED}Expected 2 commits, got $output${RESET}" && exit 1
+  echo -e "${GREEN}ok${RESET}"
+popd >/dev/null || exit 1
+rm -rf "$tmpdir"
 
 echo -n "Disable git ... "
-$SHRINE --password="$PASSWORD_1" config set git.enabled false &>/dev/null
-$SHRINE --password="$PASSWORD_1" config set git.commit.auto true &>/dev/null
-$SHRINE --password="$PASSWORD_1" config set key3 val3 &>/dev/null
-output="$(git rev-list HEAD --count)"
-[ "$output" != "2" ] && echo -e "\n${RED}Expected 2 commits, got $output${RESET}" && exit 1
-echo -e "${GREEN}ok${RESET}"
-
-popd > /dev/null || exit 1
+tmpdir=$(mktemp --directory)
+pushd "$tmpdir" >/dev/null || exit 1
+  $SHRINE --password="$PASSWORD_1" init --force --git &>/dev/null
+  $SHRINE --password="$PASSWORD_1" config set git.enabled false &>/dev/null
+  $SHRINE --password="$PASSWORD_1" config set key val &>/dev/null
+  output="$(git rev-list HEAD --count)"
+  [ "$output" != "2" ] && echo -e "\n${RED}Expected 2 commits, got $output${RESET}" && exit 1
+  echo -e "${GREEN}ok${RESET}"
+popd >/dev/null || exit 1
 rm -rf "$tmpdir"
+
 popd > /dev/null || exit 1
 exit 0
