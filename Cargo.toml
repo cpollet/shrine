@@ -2,6 +2,16 @@
 name = "shrine"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+description = "Secrets manager written in rust"
+homepage = "https://github.com/cpollet/shrine"
+documentation = "https://github.com/cpollet/shrine"
+repository = "https://github.com/cpollet/shrine"
+readme = "README.md"
+exclude = [
+    ".github/workflows/*",
+    "renovate.json"
+]
 
 [dependencies]
 aes-gcm-siv = { version = "0.11.1", features = ["std"] }
@@ -9,7 +19,7 @@ borsh = "0.10.3"
 bson = "2.6.1"
 bytes = { version = "1.4.0", features = ["serde"] }
 chrono = "0.4.26"
-clap = { version = "4.3.1", features = ["derive"] }
+clap = { version = "4.3.2", features = ["derive"] }
 csv = "1.2.2"
 dotenv-parser = "0.1.3"
 git2 = "0.17.2"
