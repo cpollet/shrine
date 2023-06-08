@@ -1,24 +1,18 @@
 #!/usr/bin/env bash
 
-# https://doc.rust-lang.org/rustc/instrument-coverage.html
-# https://github.com/mozilla/grcov
-# https://blog.rng0.io/how-to-do-code-coverage-in-rust
+# https://lib.rs/crates/cargo-llvm-cov
 
-rm -rf target/cov
-rm -rf target/coverage
-mkdir -p target/cov
+source <(cargo llvm-cov show-env --export-prefix)
+export RUSTDOCFLAGS="-C instrument-coverage -Z unstable-options --persist-doctests target/debug/doctestbins"
+cargo llvm-cov clean --workspace
 
-export CARGO_INCREMENTAL=0
-export RUSTFLAGS='-C instrument-coverage'
-export LLVM_PROFILE_FILE='target/cov/default_%p-%m.profraw'
+cargo build
 cargo test
 
-grcov target/cov \
-  --binary-path ./target/debug/deps/ \
-  --source-dir . \
-  --output-types html \
-  --branch \
-  --ignore-not-existing \
-  --ignore '../*' \
-  --ignore "/*" \
-  --output-path target/coverage/html
+for file in target/debug/doctestbins/*/rust_out; do
+  [[ -x $file ]] && $file
+done
+
+./smoke-tests.sh
+
+cargo llvm-cov report --html
