@@ -137,7 +137,7 @@ impl Shrine<Closed> {
     /// # use shrine::shrine::{Shrine, ShrineBuilder};
     /// # let password = Secret::new("password".to_string());
     /// let mut shrine = ShrineBuilder::new().build();
-    /// shrine.set("key", "val");
+    /// shrine.set("key", "val").unwrap();
     ///
     /// let shrine = shrine.close(&password).unwrap();
     /// let shrine = shrine.open(&password).unwrap();
@@ -174,7 +174,7 @@ impl Shrine<Open> {
     /// let mut src = ShrineBuilder::new().build();
     /// let mut dst = ShrineBuilder::new().build();
     ///
-    /// src.set("key", "val");
+    /// src.set("key", "val").unwrap();
     /// src.move_to(&mut dst);
     ///
     /// assert_eq!(dst.get("key").unwrap().expose_secret_as_bytes(), "val".as_bytes());
@@ -190,7 +190,7 @@ impl Shrine<Open> {
     /// # use shrine::shrine::{Shrine, ShrineBuilder};
     /// # let password = Secret::new("password".to_string());
     /// let mut shrine = ShrineBuilder::new().build();
-    /// shrine.set("key", "val");
+    /// shrine.set("key", "val").unwrap();
     ///
     /// let shrine = shrine.close(&password).unwrap();
     /// let shrine = shrine.open(&password).unwrap();
@@ -224,16 +224,16 @@ impl Shrine<Open> {
     /// # use shrine::shrine::{Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("key", "value");
+    /// shrine.set("key", "value").unwrap();
     ///
     /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
     /// ```
-    pub fn set<K, V>(&mut self, key: K, value: V)
+    pub fn set<'k, K, V>(&mut self, key: K, value: V) -> Result<(), Error>
     where
-        K: Into<String>,
+        K: Into<&'k str>,
         V: Into<SecretBytes>,
     {
-        self.payload.0.set(key.into(), value.into());
+        self.payload.0.set(key, value)
     }
 
     /// Get a previously set value by its key.
@@ -243,12 +243,12 @@ impl Shrine<Open> {
     /// # use shrine::shrine::{Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("key", "value");
+    /// shrine.set("key", "value").unwrap();
     ///
     /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
-    /// assert!(shrine.get("unknown").is_none());
+    /// assert!(shrine.get("unknown").is_err());
     /// ```
-    pub fn get<'k, K>(&self, key: K) -> Option<&SecretBytes>
+    pub fn get<'k, K>(&self, key: K) -> Result<&SecretBytes, Error>
     where
         K: Into<&'k str>,
     {
@@ -262,8 +262,8 @@ impl Shrine<Open> {
     /// # use shrine::shrine::{Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("def", "val");
-    /// shrine.set("abc", "val");
+    /// shrine.set("def", "val").unwrap();
+    /// shrine.set("abc", "val").unwrap();
     ///
     /// assert_eq!(shrine.keys().len(), 2);
     /// assert_eq!(shrine.keys().get(0).unwrap(), "abc");
@@ -281,10 +281,10 @@ impl Shrine<Open> {
     /// # use shrine::shrine::{Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("key", "value");
+    /// shrine.set("key", "value").unwrap();
     /// shrine.remove("key");
     ///
-    /// assert!(shrine.get("key").is_none());
+    /// assert!(shrine.get("key").is_err());
     /// ```
     pub fn remove<'k, K>(&mut self, key: K) -> bool
     where
@@ -303,7 +303,7 @@ impl Shrine<Open> {
     ///
     /// assert_eq!(shrine.len(), 0);
     ///
-    /// shrine.set("key", "val");
+    /// shrine.set("key", "val").unwrap();
     ///
     /// assert_eq!(shrine.len(), 1);
     /// ```
@@ -321,12 +321,16 @@ impl Shrine<Open> {
     ///
     /// assert!(shrine.is_empty());
     ///
-    /// shrine.set("key", "val");
+    /// shrine.set("key", "val").unwrap();
     ///
     /// assert!(!shrine.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
         self.payload.0.is_empty()
+    }
+
+    pub fn json(&self) -> String {
+        serde_json::to_string(&self.payload.0).unwrap_or_default()
     }
 
     pub fn set_private<K, V>(&mut self, key: K, value: V)
@@ -582,7 +586,7 @@ mod tests {
         let password = Secret::new("password".to_string());
 
         let mut shrine = ShrineBuilder::new().build();
-        shrine.set("key", "val");
+        shrine.set("key", "val").unwrap();
 
         let shrine = shrine.close(&password).expect("could not close shrine");
         let bytes = shrine.as_bytes().expect("could not serialize shrine file");

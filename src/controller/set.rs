@@ -22,7 +22,7 @@ pub fn set(
         .map(|v| v.to_string())
         .unwrap_or_else(|| prompt_password(format!("Enter `{}` value: ", key)).unwrap());
 
-    shrine.set(key.to_string(), value.as_bytes());
+    shrine.set(key.as_ref(), value.as_bytes())?;
     shrine.close(&password)?.to_path(&path)?;
 
     if let Some(repository) = repository {

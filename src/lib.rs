@@ -62,6 +62,12 @@ pub enum Error {
 
     #[error("Key `{0}` does not exist")]
     KeyNotFound(String),
+    #[error("Key `{0}` is a secret in `{1}`")]
+    KeyIsASecret(String, String),
+    #[error("Key `{0}` is an index in `{1}`")]
+    KeyIsAnIndex(String, String),
+    #[error("Key is empty in `{0}`")]
+    EmptyKey(String),
 
     #[error("Pattern is invalid")]
     InvalidPattern(regex::Error),

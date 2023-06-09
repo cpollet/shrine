@@ -13,9 +13,7 @@ pub fn get(
 
     let shrine = shrine.open(&password)?;
 
-    let secret = shrine
-        .get(key.as_ref())
-        .ok_or(Error::KeyNotFound(key.to_string()))?;
+    let secret = shrine.get(key.as_ref())?;
 
     let _ = stdout().write_all(secret.expose_secret_as_bytes());
 
