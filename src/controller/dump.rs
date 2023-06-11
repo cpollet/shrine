@@ -1,6 +1,7 @@
-use crate::shrine::{Closed, Shrine};
+use crate::shrine::{Closed, Mode, Shrine};
 use crate::utils::read_password;
 use crate::{Error, SHRINE_FILENAME};
+use base64::Engine;
 use regex::Regex;
 use secrecy::Secret;
 use std::path::PathBuf;
@@ -31,11 +32,15 @@ pub fn dump(
     println!("Shrine `{}/{}`", &path.display(), SHRINE_FILENAME);
     println!("Secrets:");
     for key in keys.iter() {
-        println!(
-            "  {}={}",
-            key,
-            String::from_utf8_lossy(shrine.get(key).unwrap().value().expose_secret_as_bytes())
-        )
+        let secret = shrine.get(key)?;
+        let value = match secret.mode() {
+            Mode::Binary => base64::engine::general_purpose::STANDARD
+                .encode(secret.value().expose_secret_as_bytes()),
+            Mode::Text => {
+                String::from_utf8_lossy(secret.value().expose_secret_as_bytes()).to_string()
+            }
+        };
+        println!("  {}={}", key, value)
     }
 
     if private {

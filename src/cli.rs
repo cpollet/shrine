@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{command, Parser, Subcommand, ValueEnum};
 use shrine::controller::get::get;
 use shrine::controller::init::init;
 use shrine::controller::ls::ls;
@@ -11,12 +11,12 @@ use std::path::PathBuf;
 use shrine::Error;
 
 use secrecy::Secret;
-use shrine::controller::config;
 use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
 use shrine::controller::import::import;
 use shrine::controller::info::{info, Fields};
-use shrine::shrine::{EncryptionAlgorithm, Shrine};
+use shrine::controller::{config, get};
+use shrine::shrine::{EncryptionAlgorithm, Mode, Shrine};
 use std::process::ExitCode;
 
 #[derive(Clone, Parser)]
@@ -69,13 +69,22 @@ enum Commands {
     Set {
         /// The secret's key
         key: String,
-        /// The secret's value; if not set, will be prompted
+        /// Read value from stdin
+        #[arg(long, short)]
+        stdin: bool,
+        /// The secret's mode
+        #[arg(long, short, default_value = "auto")]
+        mode: Modes,
+        /// The secret's value; if not set and not read from stdin, will be prompted
         value: Option<String>,
     },
     /// Get a secret's value
     Get {
         /// The secret's key
         key: String,
+        /// The output encoding (base64 by defaults for binary secrets)
+        #[arg(long, short, default_value = "auto")]
+        encoding: Encoding,
     },
     /// Lists all secrets keys
     Ls {
@@ -149,6 +158,51 @@ impl From<InfoFields> for Fields {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Modes {
+    /// Consider the secret as binary data when read from stdin; text otherwise
+    Auto,
+    /// The secret is binary data; in that mode, TTY output is base64 encoded by default
+    Binary,
+    /// The secret is text data
+    Text,
+}
+
+impl Modes {
+    fn to_mode(self, stdin: bool) -> Mode {
+        match self {
+            Modes::Auto => {
+                if stdin {
+                    Mode::Binary
+                } else {
+                    Mode::Text
+                }
+            }
+            Modes::Binary => Mode::Binary,
+            Modes::Text => Mode::Text,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum Encoding {
+    Auto,
+    /// No encoding
+    Raw,
+    /// Use base64 encoding
+    Base64,
+}
+
+impl From<&Encoding> for get::Encoding {
+    fn from(value: &Encoding) -> Self {
+        match value {
+            Encoding::Auto => get::Encoding::Auto,
+            Encoding::Raw => get::Encoding::Raw,
+            Encoding::Base64 => get::Encoding::Base64,
+        }
+    }
+}
+
 #[derive(Clone, Subcommand)]
 #[command(arg_required_else_help = true)]
 enum ConfigCommands {
@@ -210,14 +264,23 @@ fn exec(cli: Args) -> Result<(), Error> {
         Some(Commands::Info { field }) => {
             info(Shrine::from_path(&path)?, path, (*field).map(Fields::from))
         }
-        Some(Commands::Set { key, value }) => set(
+        Some(Commands::Set {
+            key,
+            stdin,
+            mode,
+            value,
+        }) => set(
             Shrine::from_path(&path)?,
             path,
             password,
             key,
+            *stdin,
+            mode.to_mode(*stdin),
             value.as_deref(),
         ),
-        Some(Commands::Get { key }) => get(Shrine::from_path(&path)?, password, key),
+        Some(Commands::Get { key, encoding }) => {
+            get(Shrine::from_path(&path)?, password, key, encoding.into())
+        }
         Some(Commands::Ls { pattern }) => ls(Shrine::from_path(&path)?, password, pattern.as_ref()),
         Some(Commands::Rm { key }) => rm(Shrine::from_path(&path)?, path, password, key),
         Some(Commands::Import { file, prefix }) => import(

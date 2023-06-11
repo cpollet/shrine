@@ -23,6 +23,9 @@ pub enum Error {
     #[error("Unsupported shrine version: {0}")]
     UnsupportedVersion(u8),
 
+    #[error("Could not read from stdin")]
+    ReadStdIn(#[source] std::io::Error),
+
     #[error("Could not read shrine")]
     IoRead(#[source] std::io::Error),
     #[error("Could not write shrine")]

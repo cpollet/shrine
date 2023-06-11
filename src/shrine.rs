@@ -138,10 +138,10 @@ impl Shrine<Closed> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder, ShrinePassword};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder, ShrinePassword};
     /// # let password = ShrinePassword::new("password".to_string());
     /// let mut shrine = ShrineBuilder::new().build();
-    /// shrine.set("key", "val").unwrap();
+    /// shrine.set("key", "val", Mode::Text).unwrap();
     ///
     /// let shrine = shrine.close(&password).unwrap();
     /// let shrine = shrine.open(&password).unwrap();
@@ -174,11 +174,11 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut src = ShrineBuilder::new().build();
     /// let mut dst = ShrineBuilder::new().build();
     ///
-    /// src.set("key", "val").unwrap();
+    /// src.set("key", "val", Mode::Text).unwrap();
     /// src.move_to(&mut dst);
     ///
     /// assert_eq!(dst.get("key").unwrap().value().expose_secret_as_bytes(), "val".as_bytes());
@@ -191,10 +191,10 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder, ShrinePassword};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder, ShrinePassword};
     /// # let password = ShrinePassword::new("password".to_string());
     /// let mut shrine = ShrineBuilder::new().build();
-    /// shrine.set("key", "val").unwrap();
+    /// shrine.set("key", "val", Mode::Text).unwrap();
     ///
     /// let shrine = shrine.close(&password).unwrap();
     /// let shrine = shrine.open(&password).unwrap();
@@ -225,14 +225,14 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("key", "value").unwrap();
+    /// shrine.set("key", "value", Mode::Text).unwrap();
     ///
     /// assert_eq!(shrine.get("key").unwrap().value().expose_secret_as_bytes(), "value".as_bytes());
     /// ```
-    pub fn set<V>(&mut self, key: &str, value: V) -> Result<(), Error>
+    pub fn set<V>(&mut self, key: &str, value: V, mode: Mode) -> Result<(), Error>
     where
         V: Into<SecretBytes>,
     {
@@ -241,7 +241,7 @@ impl Shrine<Open> {
                 secret.with_data(value.into());
                 Ok(())
             }
-            Err(Error::KeyNotFound(_)) => self.payload.0.set(key, Secret::new(value.into())),
+            Err(Error::KeyNotFound(_)) => self.payload.0.set(key, Secret::new(value.into(), mode)),
             Err(e) => Err(e),
         }
     }
@@ -250,10 +250,10 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("key", "value").unwrap();
+    /// shrine.set("key", "value", Mode::Text).unwrap();
     ///
     /// assert_eq!(shrine.get("key").unwrap().value().expose_secret_as_bytes(), "value".as_bytes());
     /// assert!(shrine.get("unknown").is_err());
@@ -266,11 +266,11 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("def", "val").unwrap();
-    /// shrine.set("abc", "val").unwrap();
+    /// shrine.set("def", "val", Mode::Text).unwrap();
+    /// shrine.set("abc", "val", Mode::Text).unwrap();
     ///
     /// assert_eq!(shrine.keys().len(), 2);
     /// assert_eq!(shrine.keys().get(0).unwrap(), "abc");
@@ -285,10 +285,10 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
-    /// shrine.set("key", "value").unwrap();
+    /// shrine.set("key", "value", Mode::Text).unwrap();
     /// shrine.remove("key");
     ///
     /// assert!(shrine.get("key").is_err());
@@ -302,12 +302,12 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
     /// assert_eq!(shrine.len(), 0);
     ///
-    /// shrine.set("key", "val").unwrap();
+    /// shrine.set("key", "val", Mode::Text).unwrap();
     ///
     /// assert_eq!(shrine.len(), 1);
     /// ```
@@ -320,12 +320,12 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
+    /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder};
     /// let mut shrine = ShrineBuilder::new().build();
     ///
     /// assert!(shrine.is_empty());
     ///
-    /// shrine.set("key", "val").unwrap();
+    /// shrine.set("key", "val", Mode::Text).unwrap();
     ///
     /// assert!(!shrine.is_empty());
     /// ```
@@ -544,6 +544,7 @@ impl ShrineBuilder {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Secret {
     value: SecretBytes,
+    mode: Mode,
     created_by: String,
     created_at: DateTime<Utc>,
     updated_by: Option<String>,
@@ -551,14 +552,19 @@ pub struct Secret {
 }
 
 impl Secret {
-    fn new(value: SecretBytes) -> Self {
+    fn new(value: SecretBytes, mode: Mode) -> Self {
         Self {
             value,
+            mode,
             created_by: format!("{}@{}", whoami::username(), whoami::hostname()),
             created_at: Utc::now(),
             updated_by: None,
             updated_at: None,
         }
+    }
+
+    pub fn mode(&self) -> Mode {
+        self.mode
     }
 
     pub fn value(&self) -> &SecretBytes {
@@ -591,6 +597,21 @@ impl Secret {
         self.updated_by = Some(format!("{}@{}", whoami::username(), whoami::hostname()));
         self.updated_at = Some(Utc::now());
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum Mode {
+    Binary,
+    Text,
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mode::Binary => write!(f, "bin"),
+            Mode::Text => write!(f, "txt"),
+        }
     }
 }
 
@@ -640,7 +661,7 @@ mod tests {
         let password = ShrinePassword::new("password".to_string());
 
         let mut shrine = ShrineBuilder::new().build();
-        shrine.set("key", "val").unwrap();
+        shrine.set("key", "val", Mode::Text).unwrap();
 
         let shrine = shrine.close(&password).expect("could not close shrine");
         let bytes = shrine.as_bytes().expect("could not serialize shrine file");

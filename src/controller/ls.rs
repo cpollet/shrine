@@ -45,7 +45,8 @@ pub fn ls(
     println!("total {}", secrets.len());
     for (secret, key) in secrets {
         println!(
-            "{:cwidth$} {} {} {:uwidth$} {:10} {:5} {}",
+            "{} {:cwidth$} {} {} {:uwidth$} {:10} {:5} {}",
+            secret.mode(),
             secret.created_by(),
             secret.created_at().format("%Y-%m-%d"),
             secret.created_at().format("%H:%M"),

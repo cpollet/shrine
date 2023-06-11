@@ -1,4 +1,4 @@
-use crate::shrine::{Closed, Shrine};
+use crate::shrine::{Closed, Mode, Shrine};
 use crate::utils::read_password;
 use crate::Error;
 use dotenv_parser::parse_dotenv;
@@ -34,7 +34,7 @@ pub fn import(
         parse_dotenv(&content).map_err(|e| Error::InvalidDotEnv(e, file.to_path_buf()))?;
 
     for (key, value) in secrets {
-        shrine.set(&format!("{}{}", prefix, key), value.as_bytes())?
+        shrine.set(&format!("{}{}", prefix, key), value.as_bytes(), Mode::Text)?
     }
 
     shrine.close(&password)?.to_path(path)
