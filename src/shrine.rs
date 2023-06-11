@@ -228,9 +228,8 @@ impl Shrine<Open> {
     ///
     /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
     /// ```
-    pub fn set<'k, K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    pub fn set<V>(&mut self, key: &str, value: V) -> Result<(), Error>
     where
-        K: Into<&'k str>,
         V: Into<SecretBytes>,
     {
         self.payload.0.set(key, value)
@@ -248,11 +247,8 @@ impl Shrine<Open> {
     /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
     /// assert!(shrine.get("unknown").is_err());
     /// ```
-    pub fn get<'k, K>(&self, key: K) -> Result<&SecretBytes, Error>
-    where
-        K: Into<&'k str>,
-    {
-        self.payload.0.get(key.into())
+    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error>{
+        self.payload.0.get(key)
     }
 
     /// Get the sorted list of all keys.
@@ -286,11 +282,9 @@ impl Shrine<Open> {
     ///
     /// assert!(shrine.get("key").is_err());
     /// ```
-    pub fn remove<'k, K>(&mut self, key: K) -> bool
-    where
-        K: Into<&'k str>,
+    pub fn remove(&mut self, key: &str) -> bool
     {
-        self.payload.0.remove(key.into())
+        self.payload.0.remove(key)
     }
 
     /// Return the keys count.

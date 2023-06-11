@@ -34,7 +34,7 @@ pub fn import(
         parse_dotenv(&content).map_err(|e| Error::InvalidDotEnv(e, file.to_path_buf()))?;
 
     for (key, value) in secrets {
-        shrine.set(format!("{}{}", prefix, key).as_ref(), value.as_bytes())?
+        shrine.set(&format!("{}{}", prefix, key), value.as_bytes())?
     }
 
     shrine.close(&password)?.to_path(path)

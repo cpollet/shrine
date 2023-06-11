@@ -23,20 +23,17 @@ impl Holder {
     }
 
     /// Sets a secret.
-    pub fn set<'k, K, V>(&mut self, key: K, value: V) -> Result<(), Error>
+    pub fn set<V>(&mut self, key: &str, value: V) -> Result<(), Error>
     where
-        K: Into<&'k str>,
         V: Into<SecretBytes>,
     {
-        self.secrets.set(key.into(), value.into())
+        self.secrets.set(key, value.into())
     }
 
     /// Gets a secret's value
-    pub fn get<'k, K>(&self, key: K) -> Result<&SecretBytes, Error>
-    where
-        K: Into<&'k str>,
+    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error>
     {
-        self.secrets.get(key.into())
+        self.secrets.get(key)
     }
 
     /// Returns all the keys, sorted in alphabetical order.
@@ -45,11 +42,9 @@ impl Holder {
     }
 
     /// Removes a secret.
-    pub fn remove<'k, K>(&mut self, key: K) -> bool
-    where
-        K: Into<&'k str>,
+    pub fn remove(&mut self, key: &str) -> bool
     {
-        self.secrets.remove(key.into())
+        self.secrets.remove(key)
     }
 
     /// Returns the count of secrets in the holder.
