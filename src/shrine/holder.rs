@@ -1,4 +1,3 @@
-use crate::bytes::SecretBytes;
 use std::borrow::Borrow;
 
 use crate::Error;
@@ -8,16 +7,25 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 /// Holds the secrets
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct Holder {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Holder<T> {
     /// Secrets and data private to the shrine.
     private: HashMap<String, String>, // fixme should this be secret as well?
     /// Actual user-defined secrets.
-    secrets: Node,
+    secrets: Node<T>,
+}
+
+impl<T> Default for Holder<T> {
+    fn default() -> Self {
+        Self {
+            private: Default::default(),
+            secrets: Node::default(),
+        }
+    }
 }
 
 /// Holds the secrets.
-impl Holder {
+impl<T> Holder<T> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -25,14 +33,18 @@ impl Holder {
     /// Sets a secret.
     pub fn set<V>(&mut self, key: &str, value: V) -> Result<(), Error>
     where
-        V: Into<SecretBytes>,
+        V: Into<T>,
     {
         self.secrets.set(key, value.into())
     }
 
     /// Gets a secret's value
-    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error> {
+    pub fn get(&self, key: &str) -> Result<&T, Error> {
         self.secrets.get(key)
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Result<&mut T, Error> {
+        self.secrets.get_mut(key)
     }
 
     /// Returns all the keys, sorted in alphabetical order.
@@ -96,26 +108,26 @@ impl Holder {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-enum Node {
-    Index(HashMap<String, Box<Node>>),
-    Secret(SecretBytes),
+enum Node<T> {
+    Index(HashMap<String, Box<Node<T>>>),
+    Secret(T),
 }
 
-impl Default for Node {
+impl<T> Default for Node<T> {
     fn default() -> Self {
         Self::Index(HashMap::new())
     }
 }
 
-impl Node {
-    fn set(&mut self, key: &str, value: SecretBytes) -> Result<(), Error> {
+impl<T> Node<T> {
+    fn set(&mut self, key: &str, value: T) -> Result<(), Error> {
         self.set_inner(key, value, key, 0)
     }
 
     fn set_inner(
         &mut self,
         key: &str,
-        value: SecretBytes,
+        value: T,
         full_key: &str,
         matched: usize,
     ) -> Result<(), Error> {
@@ -151,11 +163,11 @@ impl Node {
         }
     }
 
-    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error> {
+    pub fn get(&self, key: &str) -> Result<&T, Error> {
         self.get_inner(key, key)
     }
 
-    fn get_inner(&self, key: &str, full_key: &str) -> Result<&SecretBytes, Error> {
+    fn get_inner(&self, key: &str, full_key: &str) -> Result<&T, Error> {
         match key.split_once('/') {
             Some((_, "")) => Err(Error::EmptyKey(full_key.to_string())),
             Some((head, tail)) => match self {
@@ -168,6 +180,30 @@ impl Node {
             None => match self {
                 Node::Secret(_) => Err(Error::KeyNotFound(full_key.to_string())),
                 Node::Index(index) => match index.get(key).map(|e| &**e) {
+                    Some(Node::Secret(bytes)) => Ok(bytes),
+                    _ => Err(Error::KeyNotFound(full_key.to_string())),
+                },
+            },
+        }
+    }
+
+    pub fn get_mut(&mut self, key: &str) -> Result<&mut T, Error> {
+        self.get_mut_inner(key, key)
+    }
+
+    pub fn get_mut_inner(&mut self, key: &str, full_key: &str) -> Result<&mut T, Error> {
+        match key.split_once('/') {
+            Some((_, "")) => Err(Error::EmptyKey(full_key.to_string())),
+            Some((head, tail)) => match self {
+                Node::Secret(_) => Err(Error::KeyNotFound(full_key.to_string())),
+                Node::Index(index) => match index.get_mut(head) {
+                    None => Err(Error::KeyNotFound(full_key.to_string())),
+                    Some(node) => node.get_mut_inner(tail, full_key),
+                },
+            },
+            None => match self {
+                Node::Secret(_) => Err(Error::KeyNotFound(full_key.to_string())),
+                Node::Index(index) => match index.get_mut(key).map(|e| &mut **e) {
                     Some(Node::Secret(bytes)) => Ok(bytes),
                     _ => Err(Error::KeyNotFound(full_key.to_string())),
                 },
@@ -268,22 +304,16 @@ mod tests {
 
     #[test]
     fn set_get_len() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("key", "value1").unwrap();
         assert_eq!(holder.len(), 1);
-        assert_eq!(
-            holder.get("key").unwrap().expose_secret_as_bytes(),
-            "value1".as_bytes()
-        );
+        assert_eq!(holder.get("key").unwrap(), "value1");
 
         holder.set("key", "value2").unwrap();
 
         assert_eq!(holder.len(), 1);
-        assert_eq!(
-            holder.get("key").unwrap().expose_secret_as_bytes(),
-            "value2".as_bytes()
-        );
+        assert_eq!(holder.get("key").unwrap(), "value2");
 
         assert_eq!(
             holder.get("unknown").unwrap_err().to_string(),
@@ -293,7 +323,7 @@ mod tests {
 
     #[test]
     fn len_nested() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("a/b", "v").unwrap();
         holder.set("a/c", "v").unwrap();
@@ -304,7 +334,7 @@ mod tests {
 
     #[test]
     fn set_get_nested() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("a/b", "v").unwrap();
 
@@ -317,15 +347,12 @@ mod tests {
             "Key `a/b/c` does not exist"
         );
 
-        assert_eq!(
-            holder.get("a/b").unwrap().expose_secret_as_bytes(),
-            "v".as_bytes()
-        );
+        assert_eq!(holder.get("a/b").unwrap(), "v");
     }
 
     #[test]
     fn set_key_is_secret() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("a/b", "v").unwrap();
         assert_eq!(
@@ -336,7 +363,7 @@ mod tests {
 
     #[test]
     fn set_key_is_index() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("a/b", "v").unwrap();
         assert_eq!(
@@ -353,7 +380,7 @@ mod tests {
 
     #[test]
     fn set_end_with_slash() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
         assert_eq!(
             holder.set("a/", "v").unwrap_err().to_string(),
             "Key is empty in `a/`"
@@ -362,7 +389,7 @@ mod tests {
 
     #[test]
     fn get_end_with_slash() {
-        let holder = Holder::new();
+        let holder = Holder::<String>::new();
         assert_eq!(
             holder.get("a/").unwrap_err().to_string(),
             "Key is empty in `a/`"
@@ -371,20 +398,17 @@ mod tests {
 
     #[test]
     fn set_replace() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("a/b", "1").unwrap();
         holder.set("a/b", "2").unwrap();
 
-        assert_eq!(
-            holder.get("a/b").unwrap().expose_secret_as_bytes(),
-            "2".as_bytes()
-        );
+        assert_eq!(holder.get("a/b").unwrap(), "2");
     }
 
     #[test]
     fn keys() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         holder.set("key", "v").unwrap();
         holder.set("a/b/c", "v").unwrap();
@@ -401,7 +425,7 @@ mod tests {
 
     #[test]
     fn is_empty() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
 
         assert!(holder.is_empty());
 
@@ -412,7 +436,7 @@ mod tests {
 
     #[test]
     fn remove() {
-        let mut holder = Holder::new();
+        let mut holder = Holder::<String>::new();
         holder.set("a/b/c", "v").unwrap();
         holder.set("a/b/d", "v").unwrap();
         holder.set("a/e", "v").unwrap();
@@ -438,7 +462,7 @@ mod tests {
 
         #[test]
         fn serde() {
-            let mut holder = Holder::new();
+            let mut holder = Holder::<String>::new();
             holder.set("key", "val").unwrap();
 
             let serde = BsonSerDe::new();
@@ -446,10 +470,7 @@ mod tests {
             let bytes = serde.serialize(&holder).unwrap();
             let holder = serde.deserialize(bytes.as_slice()).unwrap();
 
-            assert_eq!(
-                "val".as_bytes(),
-                holder.get("key").unwrap().expose_secret_as_bytes()
-            )
+            assert_eq!("val", holder.get("key").unwrap())
         }
     }
 
@@ -461,7 +482,7 @@ mod tests {
 
         #[test]
         fn serde() {
-            let mut holder = Holder::new();
+            let mut holder = Holder::<String>::new();
             holder.set("key", "val").unwrap();
 
             let serde = JsonSerDe::new();
@@ -469,10 +490,7 @@ mod tests {
             let bytes = serde.serialize(&holder).unwrap();
             let holder = serde.deserialize(bytes.as_slice()).unwrap();
 
-            assert_eq!(
-                "val".as_bytes(),
-                holder.get("key").unwrap().expose_secret_as_bytes()
-            )
+            assert_eq!("val", holder.get("key").unwrap())
         }
     }
 
@@ -484,7 +502,7 @@ mod tests {
 
         #[test]
         fn serde() {
-            let mut holder = Holder::new();
+            let mut holder = Holder::<String>::new();
             holder.set("key", "val").unwrap();
 
             let serde = MessagePackSerDe::new();
@@ -492,10 +510,7 @@ mod tests {
             let bytes = serde.serialize(&holder).unwrap();
             let holder = serde.deserialize(bytes.as_slice()).unwrap();
 
-            assert_eq!(
-                "val".as_bytes(),
-                holder.get("key").unwrap().expose_secret_as_bytes()
-            )
+            assert_eq!("val", holder.get("key").unwrap())
         }
     }
 }

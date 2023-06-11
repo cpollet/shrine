@@ -40,6 +40,7 @@ impl EncDec for Plain {
     /// assert_eq!(cipher.as_ref(), clear)
     /// ```
     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
+        println!("WARNING: the shrine is not encrypted!");
         Ok(ciphertext.to_vec())
     }
 }

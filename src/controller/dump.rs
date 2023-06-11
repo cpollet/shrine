@@ -34,7 +34,7 @@ pub fn dump(
         println!(
             "  {}={}",
             key,
-            String::from_utf8_lossy(shrine.get(key).unwrap().expose_secret_as_bytes())
+            String::from_utf8_lossy(shrine.get(key).unwrap().value().expose_secret_as_bytes())
         )
     }
 

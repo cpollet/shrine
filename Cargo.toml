@@ -18,7 +18,7 @@ aes-gcm-siv = { version = "0.11.1", features = ["std"] }
 borsh = "0.10.3"
 bson = "2.6.1"
 bytes = { version = "1.4.0", features = ["serde"] }
-chrono = "0.4.26"
+chrono = { version = "0.4.26", features = ["serde"] }
 clap = { version = "4.3.2", features = ["derive"] }
 csv = "1.2.2"
 dotenv-parser = "0.1.3"

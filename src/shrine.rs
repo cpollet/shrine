@@ -11,10 +11,11 @@ use crate::serialize::SerDe;
 use crate::shrine::holder::Holder;
 use crate::{Error, SHRINE_FILENAME};
 use borsh::{BorshDeserialize, BorshSerialize};
-use secrecy::Secret;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
 
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -22,11 +23,14 @@ use uuid::Uuid;
 /// Max supported file version
 const VERSION: u8 = 0;
 
+pub type ShrinePassword = secrecy::Secret<String>;
+pub type Secrets = Holder<Secret>;
+
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub struct Closed(Vec<u8>);
 
 #[derive(Debug)]
-pub struct Open(Holder);
+pub struct Open(Secrets);
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub struct Shrine<Payload = Open> {
@@ -134,16 +138,16 @@ impl Shrine<Closed> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
-    /// # let password = Secret::new("password".to_string());
+    /// # use shrine::shrine::{Shrine, ShrineBuilder, ShrinePassword};
+    /// # let password = ShrinePassword::new("password".to_string());
     /// let mut shrine = ShrineBuilder::new().build();
     /// shrine.set("key", "val").unwrap();
     ///
     /// let shrine = shrine.close(&password).unwrap();
     /// let shrine = shrine.open(&password).unwrap();
     ///
-    /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "val".as_bytes());
-    pub fn open(self, password: &Secret<String>) -> Result<Shrine<Open>, Error> {
+    /// assert_eq!(shrine.get("key").unwrap().value().expose_secret_as_bytes(), "val".as_bytes());
+    pub fn open(self, password: &ShrinePassword) -> Result<Shrine<Open>, Error> {
         let bytes = self
             .metadata
             .encryption_algorithm()
@@ -177,7 +181,7 @@ impl Shrine<Open> {
     /// src.set("key", "val").unwrap();
     /// src.move_to(&mut dst);
     ///
-    /// assert_eq!(dst.get("key").unwrap().expose_secret_as_bytes(), "val".as_bytes());
+    /// assert_eq!(dst.get("key").unwrap().value().expose_secret_as_bytes(), "val".as_bytes());
     pub fn move_to(self, shrine: &mut Shrine<Open>) {
         shrine.payload.0 = self.payload.0
     }
@@ -187,16 +191,16 @@ impl Shrine<Open> {
     /// ```
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
-    /// # use shrine::shrine::{Shrine, ShrineBuilder};
-    /// # let password = Secret::new("password".to_string());
+    /// # use shrine::shrine::{Shrine, ShrineBuilder, ShrinePassword};
+    /// # let password = ShrinePassword::new("password".to_string());
     /// let mut shrine = ShrineBuilder::new().build();
     /// shrine.set("key", "val").unwrap();
     ///
     /// let shrine = shrine.close(&password).unwrap();
     /// let shrine = shrine.open(&password).unwrap();
     ///
-    /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "val".as_bytes());
-    pub fn close(self, password: &Secret<String>) -> Result<Shrine<Closed>, Error> {
+    /// assert_eq!(shrine.get("key").unwrap().value().expose_secret_as_bytes(), "val".as_bytes());
+    pub fn close(self, password: &ShrinePassword) -> Result<Shrine<Closed>, Error> {
         let bytes = self
             .metadata
             .serialization_format()
@@ -226,13 +230,20 @@ impl Shrine<Open> {
     ///
     /// shrine.set("key", "value").unwrap();
     ///
-    /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
+    /// assert_eq!(shrine.get("key").unwrap().value().expose_secret_as_bytes(), "value".as_bytes());
     /// ```
     pub fn set<V>(&mut self, key: &str, value: V) -> Result<(), Error>
     where
         V: Into<SecretBytes>,
     {
-        self.payload.0.set(key, value)
+        match self.payload.0.get_mut(key) {
+            Ok(secret) => {
+                secret.with_data(value.into());
+                Ok(())
+            }
+            Err(Error::KeyNotFound(_)) => self.payload.0.set(key, Secret::new(value.into())),
+            Err(e) => Err(e),
+        }
     }
 
     /// Get a previously set value by its key.
@@ -244,10 +255,10 @@ impl Shrine<Open> {
     ///
     /// shrine.set("key", "value").unwrap();
     ///
-    /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
+    /// assert_eq!(shrine.get("key").unwrap().value().expose_secret_as_bytes(), "value".as_bytes());
     /// assert!(shrine.get("unknown").is_err());
     /// ```
-    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error> {
+    pub fn get(&self, key: &str) -> Result<&Secret, Error> {
         self.payload.0.get(key)
     }
 
@@ -367,7 +378,7 @@ impl Default for Shrine {
         Self {
             magic_number: [b's', b'h', b'r', b'i', b'n', b'e'],
             metadata: Metadata::default(),
-            payload: Open(Holder::new()),
+            payload: Open(Secrets::new()),
         }
     }
 }
@@ -445,7 +456,7 @@ impl EncryptionAlgorithm {
 
     fn encryptor<'pwd>(
         &self,
-        password: &'pwd Secret<String>,
+        password: &'pwd ShrinePassword,
         aad: Option<String>,
     ) -> Box<dyn EncDec + 'pwd> {
         match self {
@@ -454,10 +465,7 @@ impl EncryptionAlgorithm {
                 //  something similar to https://github.com/cpollet/shrine.git#ae9ef36cc813d90a47c13315158f8dc3f87ee81e
                 Box::new(Aes::new(password, aad))
             }
-            EncryptionAlgorithm::Plain => {
-                println!("WARNING: the shrine is not encrypted!");
-                Box::new(Plain::new())
-            }
+            EncryptionAlgorithm::Plain => Box::new(Plain::new()),
         }
     }
 }
@@ -484,7 +492,7 @@ pub enum SerializationFormat {
 }
 
 impl SerializationFormat {
-    fn serializer(&self) -> Box<dyn SerDe<Holder>> {
+    fn serializer(&self) -> Box<dyn SerDe<Secrets>> {
         match self {
             SerializationFormat::Bson => Box::new(BsonSerDe::new()),
             SerializationFormat::Json => Box::new(JsonSerDe::new()),
@@ -533,13 +541,66 @@ impl ShrineBuilder {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Secret {
+    value: SecretBytes,
+    created_by: String,
+    created_at: DateTime<Utc>,
+    updated_by: Option<String>,
+    updated_at: Option<DateTime<Utc>>,
+}
+
+impl Secret {
+    fn new(value: SecretBytes) -> Self {
+        Self {
+            value,
+            created_by: format!("{}@{}", whoami::username(), whoami::hostname()),
+            created_at: Utc::now(),
+            updated_by: None,
+            updated_at: None,
+        }
+    }
+
+    pub fn value(&self) -> &SecretBytes {
+        &self.value
+    }
+
+    pub fn created_by(&self) -> &str {
+        &self.created_by
+    }
+
+    pub fn created_at(&self) -> &DateTime<Utc> {
+        &self.created_at
+    }
+
+    pub fn updated_by(&self) -> Option<&str> {
+        match &self.updated_by {
+            None => None,
+            Some(s) => Some(s.as_ref()),
+        }
+    }
+
+    pub fn updated_at(&self) -> Option<&DateTime<Utc>> {
+        self.updated_at.as_ref()
+    }
+}
+
+impl Secret {
+    fn with_data(&mut self, data: SecretBytes) -> &mut Self {
+        self.value = data;
+        self.updated_by = Some(format!("{}@{}", whoami::username(), whoami::hostname()));
+        self.updated_at = Some(Utc::now());
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn invalid_magic_number() {
-        let password = Secret::new("p".to_string());
+        let password = ShrinePassword::new("p".to_string());
         let mut bytes = ShrineBuilder::new()
             .build()
             .close(&password)
@@ -556,7 +617,7 @@ mod tests {
 
     #[test]
     fn unsupported_version() {
-        let password = Secret::new("p".to_string());
+        let password = ShrinePassword::new("p".to_string());
         let mut bytes = ShrineBuilder::new()
             .build()
             .close(&password)
@@ -576,7 +637,7 @@ mod tests {
 
     #[test]
     fn close_open() {
-        let password = Secret::new("password".to_string());
+        let password = ShrinePassword::new("password".to_string());
 
         let mut shrine = ShrineBuilder::new().build();
         shrine.set("key", "val").unwrap();
@@ -592,6 +653,7 @@ mod tests {
             shrine
                 .get("key")
                 .expect("key not found")
+                .value()
                 .expose_secret_as_bytes()
         )
     }
