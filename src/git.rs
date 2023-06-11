@@ -87,7 +87,7 @@ impl<State> Repository<State> {
             &format!("{}@{}", username, hostname),
             &Time::new(now.timestamp(), now.offset().local_minus_utc() / 60),
         )
-        .map_err(Error::Git) // todo can we do better?
+        .map_err(Error::Git)
     }
 
     pub fn commit_auto(&self) -> bool {
@@ -96,13 +96,12 @@ impl<State> Repository<State> {
 }
 
 impl Repository<Closed> {
-    // fixme not a git2::Error
     pub fn open(self) -> Result<Repository<Open>, Error> {
         let mut git_folder = PathBuf::from(&self.path);
         git_folder.push(".git");
 
         let repository = if git_folder.exists() {
-            git2::Repository::open(&self.path).map_err(Error::Git)? // todo can we do better?
+            git2::Repository::open(&self.path)?
         } else {
             let mut init_opts = RepositoryInitOptions::new();
             init_opts.no_reinit(true);
@@ -110,8 +109,7 @@ impl Repository<Closed> {
             init_opts.mkpath(false);
             init_opts.external_template(false);
 
-            // todo can we do better?
-            git2::Repository::init_opts(&self.path, &init_opts).map_err(Error::Git)?
+            git2::Repository::init_opts(&self.path, &init_opts)?
         };
 
         Ok(Repository {
@@ -123,16 +121,13 @@ impl Repository<Closed> {
 }
 
 impl Repository<Open> {
-    // fixme not a git2::Error
     pub fn create_commit(&self, message: &str) -> Result<String, Error> {
-        let mut index = self.state.repository.index().map_err(Error::Git)?; // todo can we do better?
-        index
-            .add_path(Path::new(SHRINE_FILENAME))
-            .map_err(Error::Git)?; // todo can we do better?
+        let mut index = self.state.repository.index()?;
+        index.add_path(Path::new(SHRINE_FILENAME))?;
 
-        index.write().map_err(Error::Git)?; // todo can we do better?
-        let oid = index.write_tree().map_err(Error::Git)?; // todo can we do better?
-        let tree = self.state.repository.find_tree(oid).map_err(Error::Git)?; // todo can we do better?
+        index.write()?;
+        let oid = index.write_tree()?;
+        let tree = self.state.repository.find_tree(oid)?;
 
         let signature = Self::signature()?;
 
@@ -150,7 +145,7 @@ impl Repository<Open> {
                     .collect::<Vec<&Commit>>()
                     .as_slice(),
             )
-            .map_err(Error::Git) // todo can we do better?
+            .map_err(Error::Git)
             .map(|c| c.to_string())
     }
 
@@ -160,21 +155,14 @@ impl Repository<Open> {
             Err(_) => return Ok(None),
         };
 
-        let obj = head
-            .resolve()
-            .map_err(Error::Git)? // todo can we do better?
-            .peel(ObjectType::Commit)
-            .map_err(Error::Git)?; // todo can we do better?
-        let commit = obj
-            .into_commit()
-            .map_err(|_| {
-                git2::Error::new(
-                    ErrorCode::NotFound,
-                    ErrorClass::Object,
-                    "Commit does not exist",
-                )
-            })
-            .map_err(Error::Git)?; // todo can we do better?
+        let obj = head.resolve()?.peel(ObjectType::Commit)?;
+        let commit = obj.into_commit().map_err(|_| {
+            git2::Error::new(
+                ErrorCode::NotFound,
+                ErrorClass::Object,
+                "Commit does not exist",
+            )
+        })?;
 
         Ok(Some(commit))
     }

@@ -31,8 +31,7 @@ impl Holder {
     }
 
     /// Gets a secret's value
-    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error>
-    {
+    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error> {
         self.secrets.get(key)
     }
 
@@ -42,8 +41,7 @@ impl Holder {
     }
 
     /// Removes a secret.
-    pub fn remove(&mut self, key: &str) -> bool
-    {
+    pub fn remove(&mut self, key: &str) -> bool {
         self.secrets.remove(key)
     }
 

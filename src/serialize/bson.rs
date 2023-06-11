@@ -46,11 +46,11 @@ where
                     "Unexpected Bson alternative",
                 ))),
             },
-            Err(e) => Err(Error::BsonWrite(e)), // todo can we do better?
+            Err(e) => Err(Error::BsonWrite(e)),
         }
     }
 
     fn deserialize(&self, bytes: &[u8]) -> Result<D, Error> {
-        bson::from_slice::<D>(bytes).map_err(Error::BsonRead) // todo can we do better?
+        bson::from_slice::<D>(bytes).map_err(Error::BsonRead)
     }
 }

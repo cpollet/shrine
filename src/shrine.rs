@@ -247,7 +247,7 @@ impl Shrine<Open> {
     /// assert_eq!(shrine.get("key").unwrap().expose_secret_as_bytes(), "value".as_bytes());
     /// assert!(shrine.get("unknown").is_err());
     /// ```
-    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error>{
+    pub fn get(&self, key: &str) -> Result<&SecretBytes, Error> {
         self.payload.0.get(key)
     }
 
@@ -282,8 +282,7 @@ impl Shrine<Open> {
     ///
     /// assert!(shrine.get("key").is_err());
     /// ```
-    pub fn remove(&mut self, key: &str) -> bool
-    {
+    pub fn remove(&mut self, key: &str) -> bool {
         self.payload.0.remove(key)
     }
 
