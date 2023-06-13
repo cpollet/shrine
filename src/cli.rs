@@ -222,6 +222,7 @@ enum ConfigCommands {
 
 #[allow(unused)]
 fn main() -> ExitCode {
+    reset_signal_pipe_handler();
     match exec(Args::parse()) {
         Ok(_) => ExitCode::from(0),
         Err(e) => {
@@ -311,5 +312,16 @@ fn exec(cli: Args) -> Result<(), Error> {
             _ => panic!(),
         },
         _ => panic!(),
+    }
+}
+
+pub fn reset_signal_pipe_handler() {
+    #[cfg(target_family = "unix")]
+    {
+        use nix::sys::signal;
+
+        unsafe {
+            signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap();
+        }
     }
 }
