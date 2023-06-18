@@ -1,17 +1,17 @@
 use crate::git::Repository;
-use crate::shrine::{Closed, Shrine};
+use crate::shrine::{Closed, Shrine, ShrinePassword};
 use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
 use crate::utils::{read_new_password, read_password};
 use crate::Error;
-use secrecy::Secret;
+
 use std::path::PathBuf;
 
 pub fn convert(
     shrine: Shrine<Closed>,
     path: PathBuf,
-    password: Option<Secret<String>>,
+    password: Option<ShrinePassword>,
     change_password: bool,
-    new_password: Option<Secret<String>>,
+    new_password: Option<ShrinePassword>,
     encryption_algorithm: Option<EncryptionAlgorithm>,
 ) -> Result<(), Error> {
     let change_password = change_password || new_password.is_some();

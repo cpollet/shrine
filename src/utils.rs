@@ -1,14 +1,12 @@
-use crate::shrine::{Closed, Shrine};
+use crate::shrine::{Closed, Shrine, ShrinePassword};
 use crate::Error;
 use csv::ReaderBuilder;
-use secrecy::Secret;
 use serde::Deserialize;
 use std::env;
 use std::ffi::OsString;
 use std::ops::BitAnd;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 static FILE_PERMISSIONS_MASK: u32 = 0o777;
 static VALID_FILE_PERMISSION: u32 = 0o600;
@@ -19,9 +17,9 @@ struct Row {
     password: String,
 }
 
-pub fn read_password(shrine_file: &Shrine<Closed>) -> Secret<String> {
+pub fn read_password(shrine_file: &Shrine<Closed>) -> ShrinePassword {
     if !shrine_file.requires_password() {
-        return Secret::from_str("").unwrap();
+        return ShrinePassword::from("");
     }
 
     // https://specifications.freedesktop.org/basedir-spec/latest/ar01s03.html
@@ -62,7 +60,7 @@ pub fn read_password(shrine_file: &Shrine<Closed>) -> Secret<String> {
                 for row in csv {
                     if let Ok(row) = row {
                         if row.uuid == shrine_file.uuid().to_string() {
-                            return Secret::from(row.password);
+                            return ShrinePassword::from(row.password);
                         }
                     } else {
                         eprintln!(
@@ -85,19 +83,19 @@ pub fn read_password(shrine_file: &Shrine<Closed>) -> Secret<String> {
     read_password_from_tty()
 }
 
-pub fn read_new_password(shrine_file: &Shrine) -> Result<Secret<String>, Error> {
+pub fn read_new_password(shrine_file: &Shrine) -> Result<ShrinePassword, Error> {
     if shrine_file.requires_password() {
         let password1 = rpassword::prompt_password("Enter new shrine password: ").unwrap();
         let password2 = rpassword::prompt_password("Enter new shrine password (again): ").unwrap();
         if password1 != password2 {
             return Err(Error::InvalidPassword);
         }
-        Ok(Secret::new(password1))
+        Ok(ShrinePassword::from(password1))
     } else {
-        Ok(Secret::new("".to_string()))
+        Ok(ShrinePassword::from(""))
     }
 }
 
-fn read_password_from_tty() -> Secret<String> {
-    Secret::new(rpassword::prompt_password("Enter shrine password: ").unwrap())
+pub fn read_password_from_tty() -> ShrinePassword {
+    ShrinePassword::from(rpassword::prompt_password("Enter shrine password: ").unwrap())
 }

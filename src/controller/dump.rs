@@ -1,15 +1,15 @@
-use crate::shrine::{Closed, Mode, Shrine};
+use crate::shrine::{Closed, Mode, Shrine, ShrinePassword};
 use crate::utils::read_password;
 use crate::{Error, SHRINE_FILENAME};
 use base64::Engine;
 use regex::Regex;
-use secrecy::Secret;
+
 use std::path::PathBuf;
 
 pub fn dump(
     shrine: Shrine<Closed>,
     path: PathBuf,
-    password: Option<Secret<String>>,
+    password: Option<ShrinePassword>,
     pattern: Option<&String>,
     private: bool,
 ) -> Result<(), Error> {

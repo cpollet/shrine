@@ -2,6 +2,7 @@ use std::error::Error as StdError;
 
 use std::path::PathBuf;
 
+pub mod agent;
 pub mod bytes;
 pub mod controller;
 pub mod encrypt;
@@ -25,6 +26,11 @@ pub enum Error {
 
     #[error("Could not read from stdin")]
     ReadStdIn(#[source] std::io::Error),
+    #[error("Could not read pid file")]
+    ReadPidFile(#[source] std::io::Error),
+
+    #[error("Could not contact agent: {0}")]
+    Agent(String),
 
     #[error("Could not read shrine")]
     IoRead(#[source] std::io::Error),

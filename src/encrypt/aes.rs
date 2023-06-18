@@ -3,19 +3,20 @@ use aes_gcm_siv::aead::{Aead, OsRng, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, Key, KeyInit, Nonce};
 
 use pbkdf2::pbkdf2_hmac_array;
-use secrecy::{ExposeSecret, Secret};
+
 use sha2::Sha256;
 
 use crate::encrypt::EncDec;
+use crate::shrine::ShrinePassword;
 use crate::Error;
 
 pub struct Aes<'pwd> {
-    password: &'pwd Secret<String>,
+    password: &'pwd ShrinePassword,
     aad: Option<String>,
 }
 
 impl<'pwd> Aes<'pwd> {
-    pub fn new(password: &'pwd Secret<String>, aad: Option<String>) -> Self {
+    pub fn new(password: &'pwd ShrinePassword, aad: Option<String>) -> Self {
         Self { password, aad }
     }
 }
@@ -67,7 +68,7 @@ const PBKDF2_ROUNDS: u32 = 600_000;
 impl<'pwd> Aes<'pwd> {
     fn cipher(&self, salt: &[u8]) -> Aes256GcmSiv {
         let key = pbkdf2_hmac_array::<Sha256, 32>(
-            self.password.expose_secret().as_bytes(),
+            self.password.expose_secret_as_bytes(),
             salt,
             PBKDF2_ROUNDS,
         );

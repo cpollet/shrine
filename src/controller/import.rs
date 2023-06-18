@@ -1,8 +1,8 @@
-use crate::shrine::{Closed, Mode, Shrine};
+use crate::shrine::{Closed, Mode, Shrine, ShrinePassword};
 use crate::utils::read_password;
 use crate::Error;
 use dotenv_parser::parse_dotenv;
-use secrecy::Secret;
+
 use std::fs::read_to_string;
 
 use std::path::{Path, PathBuf};
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 pub fn import(
     shrine: Shrine<Closed>,
     path: PathBuf,
-    password: Option<Secret<String>>,
+    password: Option<ShrinePassword>,
     file: &PathBuf,
     prefix: Option<&str>,
 ) -> Result<(), Error> {

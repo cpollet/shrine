@@ -1,16 +1,16 @@
 use crate::git::Repository;
-use crate::shrine::{Closed, Shrine};
+use crate::shrine::{Closed, Shrine, ShrinePassword};
 use crate::utils::read_password;
 use crate::Error;
 use rpassword::prompt_password;
-use secrecy::Secret;
+
 use std::io::{stdout, Write};
 use std::path::PathBuf;
 
 pub fn set(
     shrine: Shrine<Closed>,
     path: PathBuf,
-    password: Option<Secret<String>>,
+    password: Option<ShrinePassword>,
     key: &String,
     value: Option<&str>,
 ) -> Result<(), Error> {
@@ -40,7 +40,7 @@ pub fn set(
 pub fn get(
     shrine: Shrine<Closed>,
     _path: PathBuf,
-    password: Option<Secret<String>>,
+    password: Option<ShrinePassword>,
     key: &String,
 ) -> Result<(), Error> {
     let password = password.unwrap_or_else(|| read_password(&shrine));

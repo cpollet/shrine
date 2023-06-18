@@ -1,15 +1,15 @@
 use crate::git::Repository;
-use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
+use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
 use crate::utils::read_new_password;
 use crate::{git, Error, SHRINE_FILENAME};
-use secrecy::Secret;
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::string::ToString;
 
 pub fn init(
     path: PathBuf,
-    password: Option<Secret<String>>,
+    password: Option<ShrinePassword>,
     force: bool,
     encryption: Option<EncryptionAlgorithm>,
     git: bool,
