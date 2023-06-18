@@ -1,3 +1,5 @@
+#[cfg(unix)]
+pub mod agent;
 pub mod config;
 pub mod convert;
 pub mod dump;

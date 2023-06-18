@@ -1,26 +1,23 @@
 use crate::git::Repository;
-use crate::shrine::{Closed, Mode, Shrine};
+use crate::shrine::{Closed, Mode, Shrine, ShrinePassword};
 use crate::utils::read_password;
-use crate::Error;
+use crate::{agent, Error};
 use rpassword::prompt_password;
-use secrecy::Secret;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::Path;
 
-pub fn set(
+pub fn set<P>(
     shrine: Shrine<Closed>,
-    path: PathBuf,
-    password: Option<Secret<String>>,
+    path: P,
+    password: Option<ShrinePassword>,
     key: &String,
     read_from_stdin: bool,
     mode: Mode,
     value: Option<&str>,
-) -> Result<(), Error> {
-    let password = password.unwrap_or_else(|| read_password(&shrine));
-
-    let mut shrine = shrine.open(&password)?;
-    let repository = Repository::new(path.clone(), &shrine);
-
+) -> Result<(), Error>
+where
+    P: AsRef<Path>,
+{
     let value = if read_from_stdin {
         let mut input = Vec::new();
         let stdin = std::io::stdin();
@@ -35,14 +32,21 @@ pub fn set(
             .to_vec()
     };
 
-    shrine.set(key.as_ref(), value.as_slice(), mode)?;
-    shrine.close(&password)?.to_path(&path)?;
+    if agent::client::is_running() {
+        agent::client::set_key(path.as_ref().to_str().unwrap(), key, value, mode)?;
+    } else {
+        let password = password.unwrap_or_else(|| read_password(&shrine));
+        let mut shrine = shrine.open(&password)?;
+        let repository = Repository::new(&path, &shrine);
+        shrine.set(key.as_ref(), value.as_slice(), mode)?;
+        shrine.close(&password)?.to_path(&path)?;
 
-    if let Some(repository) = repository {
-        if repository.commit_auto() {
-            repository
-                .open()
-                .and_then(|r| r.create_commit("Update shrine"))?;
+        if let Some(repository) = repository {
+            if repository.commit_auto() {
+                repository
+                    .open()
+                    .and_then(|r| r.create_commit("Update shrine"))?;
+            }
         }
     }
 

@@ -15,6 +15,8 @@ use std::fmt::{Display, Formatter};
 use std::fs::File;
 
 use chrono::{DateTime, Utc};
+
+use secrecy::{CloneableSecret, ExposeSecret, SerializableSecret, Zeroize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -23,7 +25,36 @@ use uuid::Uuid;
 /// Max supported file version
 const VERSION: u8 = 0;
 
-pub type ShrinePassword = secrecy::Secret<String>;
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ShrinePassword(secrecy::Secret<SerializableSecretString>);
+impl ShrinePassword {
+    pub fn expose_secret(&self) -> &str {
+        self.0.expose_secret().0.as_str()
+    }
+    pub fn expose_secret_as_bytes(&self) -> &[u8] {
+        self.0.expose_secret().0.as_bytes()
+    }
+}
+
+impl<S> From<S> for ShrinePassword
+where
+    S: Into<String>,
+{
+    fn from(value: S) -> Self {
+        Self(secrecy::Secret::new(SerializableSecretString(value.into())))
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SerializableSecretString(String);
+impl SerializableSecret for SerializableSecretString {}
+impl CloneableSecret for SerializableSecretString {}
+impl Zeroize for SerializableSecretString {
+    fn zeroize(&mut self) {
+        self.0.zeroize()
+    }
+}
+
 pub type Secrets = Holder<Secret>;
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
@@ -139,7 +170,7 @@ impl Shrine<Closed> {
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
     /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder, ShrinePassword};
-    /// # let password = ShrinePassword::new("password".to_string());
+    /// # let password = ShrinePassword::from("password");
     /// let mut shrine = ShrineBuilder::new().build();
     /// shrine.set("key", "val", Mode::Text).unwrap();
     ///
@@ -192,7 +223,7 @@ impl Shrine<Open> {
     /// # use secrecy::Secret;
     /// # use shrine::bytes::SecretBytes;
     /// # use shrine::shrine::{Mode, Shrine, ShrineBuilder, ShrinePassword};
-    /// # let password = ShrinePassword::new("password".to_string());
+    /// # let password = ShrinePassword::from("password");
     /// let mut shrine = ShrineBuilder::new().build();
     /// shrine.set("key", "val", Mode::Text).unwrap();
     ///
@@ -621,7 +652,7 @@ mod tests {
 
     #[test]
     fn invalid_magic_number() {
-        let password = ShrinePassword::new("p".to_string());
+        let password = ShrinePassword::from("p");
         let mut bytes = ShrineBuilder::new()
             .build()
             .close(&password)
@@ -638,7 +669,7 @@ mod tests {
 
     #[test]
     fn unsupported_version() {
-        let password = ShrinePassword::new("p".to_string());
+        let password = ShrinePassword::from("p");
         let mut bytes = ShrineBuilder::new()
             .build()
             .close(&password)
@@ -658,7 +689,7 @@ mod tests {
 
     #[test]
     fn close_open() {
-        let password = ShrinePassword::new("password".to_string());
+        let password = ShrinePassword::from("password");
 
         let mut shrine = ShrineBuilder::new().build();
         shrine.set("key", "val", Mode::Text).unwrap();

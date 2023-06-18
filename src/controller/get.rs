@@ -1,23 +1,31 @@
-use crate::shrine::{Closed, Mode, Secret, Shrine, ShrinePassword};
+use crate::agent;
+use crate::shrine::{Mode, Secret, Shrine, ShrinePassword};
 use crate::utils::read_password;
 use crate::Error;
 use atty::Stream;
 use base64::Engine;
 use std::io::{stdout, Write};
+use std::path::Path;
 
-pub fn get(
-    shrine: Shrine<Closed>,
+pub fn get<P>(
+    path: P,
     password: Option<ShrinePassword>,
     key: &String,
     encoding: Encoding,
-) -> Result<(), Error> {
-    let password = password.unwrap_or_else(|| read_password(&shrine));
-
-    let shrine = shrine.open(&password)?;
-
-    let secret = shrine.get(key.as_ref())?;
-
-    let _ = stdout().write_all(encoding.encode(secret).as_slice());
+) -> Result<(), Error>
+where
+    P: AsRef<Path>,
+{
+    if agent::client::is_running() {
+        let secret = agent::client::get_key(path.as_ref().to_str().unwrap(), key)?;
+        let _ = stdout().write_all(encoding.encode(&secret).as_slice());
+    } else {
+        let shrine = Shrine::from_path(&path)?;
+        let password = password.unwrap_or_else(|| read_password(&shrine));
+        let shrine = shrine.open(&password)?;
+        let secret = shrine.get(key.as_ref())?;
+        let _ = stdout().write_all(encoding.encode(secret).as_slice());
+    };
 
     Ok(())
 }

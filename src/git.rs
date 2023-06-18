@@ -1,10 +1,8 @@
+use crate::shrine::Shrine;
 use crate::{shrine, Error, SHRINE_FILENAME};
-
 use chrono::Local;
 use git2::{Commit, ErrorClass, ErrorCode, ObjectType, RepositoryInitOptions, Signature, Time};
-
-use crate::shrine::Shrine;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::str::FromStr;
 
 struct Configuration {
@@ -48,8 +46,11 @@ impl Default for Configuration {
     }
 }
 
-pub struct Repository<State = Closed> {
-    path: PathBuf,
+pub struct Repository<P, State = Closed>
+where
+    P: AsRef<Path>,
+{
+    path: P,
     configuration: Configuration,
     state: State,
 }
@@ -60,8 +61,14 @@ pub struct Open {
     repository: git2::Repository,
 }
 
-impl Repository {
-    pub fn new(path: PathBuf, shrine: &Shrine<shrine::Open>) -> Option<Self> {
+impl<P> Repository<P>
+where
+    P: AsRef<Path>,
+{
+    pub fn new(path: P, shrine: &Shrine<shrine::Open>) -> Option<Self>
+    where
+        P: AsRef<Path>,
+    {
         if let Some(enabled) = shrine.get_private("git.enabled") {
             if enabled == "true" {
                 return Some(Repository {
@@ -76,7 +83,10 @@ impl Repository {
     }
 }
 
-impl<State> Repository<State> {
+impl<P, State> Repository<P, State>
+where
+    P: AsRef<Path>,
+{
     fn signature<'a>() -> Result<Signature<'a>, Error> {
         let now = Local::now();
         let username = whoami::username();
@@ -95,9 +105,15 @@ impl<State> Repository<State> {
     }
 }
 
-impl Repository<Closed> {
-    pub fn open(self) -> Result<Repository<Open>, Error> {
-        let mut git_folder = PathBuf::from(&self.path);
+impl<P> Repository<P, Closed>
+where
+    P: AsRef<Path>,
+{
+    pub fn open(self) -> Result<Repository<P, Open>, Error>
+    where
+        P: AsRef<Path>,
+    {
+        let mut git_folder = self.path.as_ref().to_path_buf();
         git_folder.push(".git");
 
         let repository = if git_folder.exists() {
@@ -120,7 +136,10 @@ impl Repository<Closed> {
     }
 }
 
-impl Repository<Open> {
+impl<P> Repository<P, Open>
+where
+    P: AsRef<Path>,
+{
     pub fn create_commit(&self, message: &str) -> Result<String, Error> {
         let mut index = self.state.repository.index()?;
         index.add_path(Path::new(SHRINE_FILENAME))?;

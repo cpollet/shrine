@@ -1,23 +1,20 @@
 use clap::{command, Parser, Subcommand, ValueEnum};
+use shrine::controller::convert::convert;
+use shrine::controller::dump::dump;
 use shrine::controller::get::get;
+use shrine::controller::import::import;
+use shrine::controller::info::{info, Fields};
 use shrine::controller::init::init;
 use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
 use shrine::controller::set::set;
-use std::env;
-
-use std::path::PathBuf;
-
+#[cfg(unix)]
+use shrine::controller::{agent, config, get};
+use shrine::shrine::{EncryptionAlgorithm, Mode, Shrine, ShrinePassword};
 use shrine::Error;
-
-use secrecy::Secret;
-use shrine::controller::convert::convert;
-use shrine::controller::dump::dump;
-use shrine::controller::import::import;
-use shrine::controller::info::{info, Fields};
-use shrine::controller::{config, get};
-use shrine::shrine::{EncryptionAlgorithm, Mode, Shrine};
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::{env, fs};
 
 #[derive(Clone, Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
@@ -34,6 +31,12 @@ struct Args {
 
 #[derive(Clone, Subcommand)]
 enum Commands {
+    /// Manage the agent
+    #[cfg(unix)]
+    Agent {
+        #[command(subcommand)]
+        command: Option<AgentCommands>,
+    },
     /// Initializes a shrine in the current folder
     Init {
         /// Override any existing shrine
@@ -120,6 +123,15 @@ enum Commands {
         #[command(subcommand)]
         command: Option<ConfigCommands>,
     },
+}
+
+#[derive(Clone, Subcommand)]
+#[command(arg_required_else_help = true)]
+#[cfg(unix)]
+enum AgentCommands {
+    Start,
+    Stop,
+    Status,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -233,12 +245,20 @@ fn main() -> ExitCode {
 }
 
 fn exec(cli: Args) -> Result<(), Error> {
-    let password = cli.password.map(Secret::new);
+    let password = cli.password.map(ShrinePassword::from);
     let path = cli
         .path
         .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
+    let path = fs::canonicalize(path).unwrap();
 
     match &cli.command {
+        #[cfg(unix)]
+        Some(Commands::Agent { command }) => match command {
+            Some(AgentCommands::Start) => agent::start(),
+            Some(AgentCommands::Stop) => agent::stop(),
+            Some(AgentCommands::Status) => agent::status(),
+            _ => panic!(),
+        },
         Some(Commands::Init {
             force,
             encryption,
@@ -259,7 +279,7 @@ fn exec(cli: Args) -> Result<(), Error> {
             path,
             password,
             *change_password,
-            new_password.clone().map(Secret::new),
+            new_password.as_ref().map(ShrinePassword::from),
             encryption.map(|algo| algo.into()),
         ),
         Some(Commands::Info { field }) => {
@@ -279,9 +299,7 @@ fn exec(cli: Args) -> Result<(), Error> {
             mode.to_mode(*stdin),
             value.as_deref(),
         ),
-        Some(Commands::Get { key, encoding }) => {
-            get(Shrine::from_path(&path)?, password, key, encoding.into())
-        }
+        Some(Commands::Get { key, encoding }) => get(path, password, key, encoding.into()),
         Some(Commands::Ls { pattern }) => ls(Shrine::from_path(&path)?, password, pattern.as_ref()),
         Some(Commands::Rm { key }) => rm(Shrine::from_path(&path)?, path, password, key),
         Some(Commands::Import { file, prefix }) => import(
