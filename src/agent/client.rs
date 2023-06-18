@@ -39,6 +39,10 @@ pub fn set_key(path: &str, key: &str, value: Vec<u8>, mode: Mode) -> Result<(), 
     .map(|_| ())
 }
 
+pub fn clear_passwords() -> Result<(), Error> {
+    rt().block_on(delete::<Empty>("/passwords")).map(|_| ())
+}
+
 fn rt() -> Runtime {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -127,6 +131,41 @@ where
             .body(Body::from(
                 serde_json::to_string(payload).expect("could not serialize body"),
             ))
+            .unwrap();
+
+        match execute::<T>(request).await? {
+            Response::Payload(payload) => return Ok(payload),
+            Response::Uuid(uuid) => {
+                let password = read_password_from_tty();
+                let pwd_request = Request::builder()
+                    .method(Method::PUT)
+                    .header("content-type", "application/json")
+                    .uri(Uri::new(&socket, "/passwords"))
+                    .body(Body::from(
+                        serde_json::to_string(&SetPasswordRequest { uuid, password })
+                            .expect("could not serialize body"),
+                    ))
+                    .expect("could not prepare request");
+                execute::<Empty>(pwd_request).await?;
+            }
+        }
+    }
+}
+
+async fn delete<T>(uri: &str) -> Result<T, Error>
+where
+    T: DoDeserialize,
+{
+    let socket = match env::var("XDG_RUNTIME_DIR") {
+        Ok(dir) => format!("{}/shrine.socket", dir),
+        Err(_) => return Err(Error::Agent("XDG_RUNTIME_DIR not set".to_string())),
+    };
+
+    loop {
+        let request = Request::builder()
+            .method(Method::DELETE)
+            .uri(Uri::new(&socket, uri))
+            .body(Default::default())
             .unwrap();
 
         match execute::<T>(request).await? {

@@ -1,3 +1,4 @@
+use crate::agent::client;
 use crate::Error;
 use daemonize::Daemonize;
 use sig::kill;
@@ -52,6 +53,10 @@ pub fn stop() -> Result<(), Error> {
 
     kill!(pid, 2);
     Ok(())
+}
+
+pub fn clear_passwords() -> Result<(), Error> {
+    client::clear_passwords()
 }
 
 pub fn status() -> Result<(), Error> {

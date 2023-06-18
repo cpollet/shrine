@@ -6,7 +6,7 @@ use crate::{Error, SHRINE_FILENAME};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::{delete, get, put};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use hyper::Server;
@@ -67,6 +67,7 @@ pub async fn serve(pidfile: String, socketfile: String) {
     let app = Router::new()
         .route("/status", get(get_status))
         .route("/passwords", put(set_password))
+        .route("/passwords", delete(delete_passwords))
         .route("/keys/:file/:key", get(get_key))
         .route("/keys/:file/:key", put(set_key))
         .with_state(state);
@@ -119,6 +120,11 @@ async fn set_password(
     state.set_password(set_password_request.uuid, set_password_request.password);
 }
 
+async fn delete_passwords(State(state): State<AgentState>) {
+    info!("delete_passwords");
+    state.delete_passwords();
+}
+
 async fn get_key(
     State(state): State<AgentState>,
     Path((path, key)): Path<(String, String)>,
@@ -138,7 +144,9 @@ async fn get_key(
 
 fn open_shrine(state: AgentState, path: &str) -> Result<(Shrine, ShrinePassword), Response> {
     let shrine = match Shrine::from_path(PathBuf::from_str(path).unwrap()) {
-        Err(Error::FileNotFound(_)) => return Err(ErrorResponse::FileNotFound(path.to_string()).into()),
+        Err(Error::FileNotFound(_)) => {
+            return Err(ErrorResponse::FileNotFound(path.to_string()).into())
+        }
         Err(Error::IoRead(_)) => return Err(ErrorResponse::Read(path.to_string()).into()),
         Err(_) => return Err(ErrorResponse::Io(path.to_string()).into()),
         Ok(shrine) => shrine,
@@ -228,6 +236,10 @@ impl AgentState {
             .lock()
             .unwrap()
             .insert(uuid, (Utc::now(), password));
+    }
+
+    fn delete_passwords(&self) {
+        self.passwords.lock().unwrap().clear();
     }
 
     fn get_password(&self, uuid: Uuid) -> Option<ShrinePassword> {

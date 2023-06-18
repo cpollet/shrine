@@ -129,8 +129,13 @@ enum Commands {
 #[command(arg_required_else_help = true)]
 #[cfg(unix)]
 enum AgentCommands {
+    /// Starts shrine agent
     Start,
+    /// Stops shrine agent
     Stop,
+    /// Clear cached passwords
+    ClearPasswords,
+    /// Returns the status of teh shrine agent
     Status,
 }
 
@@ -256,6 +261,7 @@ fn exec(cli: Args) -> Result<(), Error> {
         Some(Commands::Agent { command }) => match command {
             Some(AgentCommands::Start) => agent::start(),
             Some(AgentCommands::Stop) => agent::stop(),
+            Some(AgentCommands::ClearPasswords) => agent::clear_passwords(),
             Some(AgentCommands::Status) => agent::status(),
             _ => panic!(),
         },
