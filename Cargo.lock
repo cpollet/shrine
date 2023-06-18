@@ -1518,7 +1518,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "sig",
  "thiserror",
  "tokio",
  "tokio-cron-scheduler",
@@ -1528,15 +1527,6 @@ dependencies = [
  "urlencoding",
  "uuid",
  "whoami",
-]
-
-[[package]]
-name = "sig"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6567e29578f9bfade6a5d94a32b9a4256348358d2a3f448cab0021f9a02614a2"
-dependencies = [
- "libc",
 ]
 
 [[package]]
