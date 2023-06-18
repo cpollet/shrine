@@ -17,8 +17,10 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{mem, process};
 use tokio::signal::ctrl_c;
 use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::oneshot::{channel, Receiver, Sender};
 use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::log::{error, info};
 use tracing::Level;
@@ -38,7 +40,8 @@ pub async fn serve(pidfile: String, socketfile: String) {
         .with(filter)
         .init();
 
-    let state = AgentState::new();
+    let (tx, rx) = channel::<()>();
+    let state = AgentState::new(tx);
 
     let mut scheduler = JobScheduler::new().await.unwrap();
 
@@ -47,7 +50,6 @@ pub async fn serve(pidfile: String, socketfile: String) {
         scheduler
             .add(
                 Job::new_repeated(Duration::from_secs(1), move |_uuid, _l| {
-                    // info!("cleaning passwords");
                     state.clean_expired_passwords();
                 })
                 .unwrap(),
@@ -65,7 +67,8 @@ pub async fn serve(pidfile: String, socketfile: String) {
     scheduler.start().await.unwrap();
 
     let app = Router::new()
-        .route("/status", get(get_status))
+        .route("/", delete(delete_agent))
+        .route("/pid", get(get_pid))
         .route("/passwords", put(set_password))
         .route("/passwords", delete(delete_passwords))
         .route("/keys/:file/:key", get(get_key))
@@ -74,7 +77,7 @@ pub async fn serve(pidfile: String, socketfile: String) {
 
     if let Ok(x) = Server::bind_unix(&socketfile) {
         x.serve(app.into_make_service())
-            .with_graceful_shutdown(shutdown())
+            .with_graceful_shutdown(shutdown(rx))
             .await
             .unwrap();
 
@@ -87,7 +90,7 @@ pub async fn serve(pidfile: String, socketfile: String) {
     scheduler.shutdown().await.unwrap();
 }
 
-async fn shutdown() {
+async fn shutdown(shutdown_http_signal_rx: Receiver<()>) {
     let ctrl_c = async {
         ctrl_c().await.expect("failed to install Ctrl+C handler");
     };
@@ -99,17 +102,31 @@ async fn shutdown() {
             .await;
     };
 
+    let http_shutdown = async {
+        shutdown_http_signal_rx.await.ok();
+    };
+
     tokio::select! {
         _ = ctrl_c => {},
         _ = terminate => {},
+        _ = http_shutdown => {}
     }
 
-    info!("Shutdown HTTP server");
+    info!("Shut down HTTP server");
 }
 
-async fn get_status() -> String {
-    info!("get_status");
-    serde_json::to_string(&true).unwrap()
+async fn delete_agent(State(state): State<AgentState>) {
+    info!("delete_agent");
+    let channel = channel::<()>();
+
+    let mut sig = state.http_shutdown_tx.lock().unwrap();
+
+    let _ = mem::replace(&mut *sig, channel.0).send(());
+}
+
+async fn get_pid() -> String {
+    info!("get_pid");
+    serde_json::to_string(&process::id()).unwrap()
 }
 
 async fn set_password(
@@ -220,13 +237,15 @@ async fn set_key(
 
 #[derive(Clone)]
 struct AgentState {
+    http_shutdown_tx: Arc<Mutex<Sender<()>>>,
     passwords: Arc<Mutex<HashMap<Uuid, ATimePassword>>>,
 }
 type ATimePassword = (DateTime<Utc>, ShrinePassword);
 
 impl AgentState {
-    fn new() -> Self {
+    fn new(http_shutdown_tx: Sender<()>) -> Self {
         Self {
+            http_shutdown_tx: Arc::new(Mutex::new(http_shutdown_tx)),
             passwords: Arc::new(Mutex::new(Default::default())),
         }
     }

@@ -26,8 +26,6 @@ pub enum Error {
 
     #[error("Could not read from stdin")]
     ReadStdIn(#[source] std::io::Error),
-    #[error("Could not read pid file")]
-    ReadPidFile(#[source] std::io::Error),
 
     #[error("Could not contact agent: {0}")]
     Agent(String),

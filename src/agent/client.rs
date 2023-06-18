@@ -13,7 +13,15 @@ use tokio::runtime::Runtime;
 use uuid::Uuid;
 
 pub fn is_running() -> bool {
-    rt().block_on(get::<bool>("/status")).unwrap_or(false)
+    rt().block_on(get::<u32>("/pid")).is_ok()
+}
+
+pub fn pid() -> Option<u32> {
+    rt().block_on(get::<u32>("/pid")).ok()
+}
+
+pub fn stop() -> Result<(), Error> {
+    rt().block_on(delete::<Empty>("/")).map(|_| ())
 }
 
 pub fn get_key(path: &str, key: &str) -> Result<Secret, Error> {

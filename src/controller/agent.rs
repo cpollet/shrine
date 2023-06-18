@@ -1,11 +1,8 @@
 use crate::agent::client;
 use crate::Error;
 use daemonize::Daemonize;
-use sig::kill;
+use std::env;
 use std::fs::File;
-use std::io::ErrorKind;
-use std::str::FromStr;
-use std::{env, fs, io};
 
 pub fn start() -> Result<(), Error> {
     // https://specifications.freedesktop.org/basedir-spec/latest/ar01s03.html
@@ -37,22 +34,11 @@ pub fn start() -> Result<(), Error> {
 }
 
 pub fn stop() -> Result<(), Error> {
-    let runtime_dir = env::var("XDG_RUNTIME_DIR").expect("$XDG_RUNTIME_DIR is not set or is invalid; read https://specifications.freedesktop.org/basedir-spec/latest/ar01s03.html");
-    let pidfile = format!("{}/shrine.pid", runtime_dir);
-
-    let pid = fs::read_to_string(pidfile)
-        .map_err(Error::ReadPidFile)
-        .and_then(|pid| {
-            i32::from_str(pid.trim()).map_err(|_| {
-                Error::ReadPidFile(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "PID in not a number",
-                ))
-            })
-        })?;
-
-    kill!(pid, 2);
-    Ok(())
+    if client::is_running() {
+        client::stop()
+    } else {
+        Ok(())
+    }
 }
 
 pub fn clear_passwords() -> Result<(), Error> {
@@ -60,15 +46,15 @@ pub fn clear_passwords() -> Result<(), Error> {
 }
 
 pub fn status() -> Result<(), Error> {
-    let runtime_dir = env::var("XDG_RUNTIME_DIR").expect("$XDG_RUNTIME_DIR is not set or is invalid; read https://specifications.freedesktop.org/basedir-spec/latest/ar01s03.html");
-    let pidfile = format!("{}/shrine.pid", runtime_dir);
-
-    match fs::read_to_string(pidfile) {
-        Ok(pid) => println!("PID: {}", pid.trim()),
-        Err(_) => println!("No PID file found"),
-    };
-
-    println!("Is running: {}", crate::agent::client::is_running());
+    match client::pid() {
+        None => {
+            println!("Is running: false");
+        }
+        Some(pid) => {
+            println!("Is running: false");
+            println!("PID:        {}", pid);
+        }
+    }
 
     Ok(())
 }
