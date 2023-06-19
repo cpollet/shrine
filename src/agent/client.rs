@@ -1,6 +1,6 @@
-use crate::agent::{ErrorResponse, SetPasswordRequest, SetSecretRequest};
+use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 use crate::bytes::SecretBytes;
-use crate::shrine::{Mode, Secret};
+use crate::shrine::{Key, Mode, Secret};
 use crate::utils::read_password_from_tty;
 use crate::Error;
 use hyper::body::HttpBody;
@@ -45,6 +45,25 @@ pub fn set_key(path: &str, key: &str, value: Vec<u8>, mode: Mode) -> Result<(), 
         },
     ))
     .map(|_| ())
+}
+
+pub fn delete_key(path: &str, key: &str) -> Result<Vec<Secret>, Error> {
+    rt().block_on(delete::<Vec<Secret>>(&format!(
+        "/keys/{}/{}",
+        urlencoding::encode(path),
+        urlencoding::encode(key)
+    )))
+}
+
+pub fn ls(path: &str, regexp: Option<&str>) -> Result<Vec<Key>, Error> {
+    rt().block_on(get::<Vec<Key>>(&format!(
+        "/keys/{}?{}",
+        urlencoding::encode(path),
+        serde_qs::to_string(&GetSecretsRequest {
+            regexp: regexp.map(|s| s.to_string())
+        })
+        .unwrap()
+    )))
 }
 
 pub fn clear_passwords() -> Result<(), Error> {
@@ -226,6 +245,7 @@ where
         ErrorResponse::Unauthorized(uuid) => Ok(Response::Uuid(uuid)),
         ErrorResponse::Forbidden(uuid) => Ok(Response::Uuid(uuid)),
         ErrorResponse::KeyNotFound { key, .. } => Err(Error::KeyNotFound(key)),
+        ErrorResponse::Regex(e) => Err(Error::InvalidPattern(regex::Error::Syntax(e))),
         _ => Err(Error::Agent("unknown error".to_string())),
     }
 }

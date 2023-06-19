@@ -19,6 +19,7 @@ pub enum ErrorResponse {
     Unauthorized(Uuid),
     Forbidden(Uuid),
     KeyNotFound { file: String, key: String },
+    Regex(String),
 }
 
 impl ErrorResponse {
@@ -31,6 +32,7 @@ impl ErrorResponse {
             ErrorResponse::Read(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorResponse::Write(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ErrorResponse::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ErrorResponse::Regex(_) => StatusCode::BAD_REQUEST,
         }
     }
 }
@@ -51,4 +53,9 @@ pub struct SetPasswordRequest {
 pub struct SetSecretRequest {
     pub secret: SecretBytes,
     pub mode: Mode,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GetSecretsRequest {
+    pub regexp: Option<String>,
 }

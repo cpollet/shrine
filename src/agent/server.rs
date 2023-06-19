@@ -1,9 +1,9 @@
-use crate::agent::{ErrorResponse, SetPasswordRequest, SetSecretRequest};
+use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 
 use crate::git::Repository;
-use crate::shrine::{Shrine, ShrinePassword};
+use crate::shrine::{Key, Secret, Shrine, ShrinePassword};
 use crate::{Error, SHRINE_FILENAME};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, put};
@@ -11,6 +11,7 @@ use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use hyper::Server;
 use hyperlocal::UnixServerExt;
+use regex::Regex;
 use std::collections::HashMap;
 use std::fs::remove_file;
 use std::path::PathBuf;
@@ -71,8 +72,10 @@ pub async fn serve(pidfile: String, socketfile: String) {
         .route("/pid", get(get_pid))
         .route("/passwords", put(set_password))
         .route("/passwords", delete(delete_passwords))
+        .route("/keys/:file", get(get_secrets))
         .route("/keys/:file/:key", get(get_key))
         .route("/keys/:file/:key", put(set_key))
+        .route("/keys/:file/:key", delete(delete_key))
         .with_state(state);
 
     if let Ok(x) = Server::bind_unix(&socketfile) {
@@ -135,6 +138,52 @@ async fn set_password(
 ) {
     info!("set_password");
     state.set_password(set_password_request.uuid, set_password_request.password);
+}
+
+async fn get_secrets(
+    State(state): State<AgentState>,
+    Path(path): Path<String>,
+    Query(params): Query<GetSecretsRequest>,
+) -> Response {
+    info!(
+        "get_secrets from file `{}/{}` ({:?})",
+        path, SHRINE_FILENAME, params
+    );
+
+    let regex = match params
+        .regexp
+        .as_ref()
+        .map(|p| Regex::new(p.as_ref()))
+        .transpose()
+        .map_err(Error::InvalidPattern)
+    {
+        Err(e) => return ErrorResponse::Regex(e.to_string()).into(),
+        Ok(regex) => regex,
+    };
+
+    let shrine = match open_shrine(state, &path) {
+        Ok((shrine, _)) => shrine,
+        Err(response) => return response,
+    };
+
+    let mut keys = shrine
+        .keys()
+        .into_iter()
+        .filter(|k| regex.as_ref().map(|r| r.is_match(k)).unwrap_or(true))
+        .collect::<Vec<String>>();
+    keys.sort_unstable();
+
+    let secrets = keys
+        .into_iter()
+        .map(|k| (shrine.get(&k).expect("must be there"), k))
+        .collect::<Vec<(&Secret, String)>>();
+
+    let secrets = secrets
+        .into_iter()
+        .map(|(s, k)| (Key::from((k, s))))
+        .collect::<Vec<Key>>();
+
+    Json(secrets).into_response()
 }
 
 async fn delete_passwords(State(state): State<AgentState>) {
@@ -208,6 +257,51 @@ async fn set_key(
             return ErrorResponse::KeyNotFound { file: path, key }.into()
         }
         Err(_) => return ErrorResponse::Write(path).into(),
+    }
+
+    let shrine = match shrine.close(&shrine_password) {
+        Ok(shrine) => shrine,
+        Err(_) => return ErrorResponse::Write(path).into(),
+    };
+    if shrine.to_path(&path).is_err() {
+        return ErrorResponse::Write(path).into();
+    }
+
+    if let Some(repository) = repository {
+        if repository.commit_auto()
+            && repository
+                .open()
+                .and_then(|r| r.create_commit("Update shrine"))
+                .is_err()
+        {
+            return ErrorResponse::Write(path).into();
+        }
+    }
+
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .body(Default::default())
+        .unwrap()
+}
+
+async fn delete_key(
+    State(state): State<AgentState>,
+    Path((path, key)): Path<(String, String)>,
+) -> Response {
+    info!(
+        "delete_key `{}` on file `{}/{}`",
+        key, path, SHRINE_FILENAME
+    );
+
+    let (mut shrine, shrine_password) = match open_shrine(state, &path) {
+        Ok(v) => v,
+        Err(response) => return response,
+    };
+
+    let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
+
+    if !shrine.remove(&key) {
+        return ErrorResponse::KeyNotFound { file: path, key }.into();
     }
 
     let shrine = match shrine.close(&shrine_password) {
