@@ -306,7 +306,7 @@ fn exec(cli: Args) -> Result<(), Error> {
             value.as_deref(),
         ),
         Some(Commands::Get { key, encoding }) => get(path, password, key, encoding.into()),
-        Some(Commands::Ls { pattern }) => ls(Shrine::from_path(&path)?, password, pattern.as_ref()),
+        Some(Commands::Ls { pattern }) => ls(path, password, pattern.as_ref()),
         Some(Commands::Rm { key }) => rm(Shrine::from_path(&path)?, path, password, key),
         Some(Commands::Import { file, prefix }) => import(
             Shrine::from_path(&path)?,
