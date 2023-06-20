@@ -673,6 +673,7 @@ impl From<(String, &Secret)> for Key {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn invalid_magic_number() {
@@ -732,5 +733,42 @@ mod tests {
                 .value()
                 .expose_secret_as_bytes()
         )
+    }
+
+    #[test]
+    fn to_path_from_path() {
+        let temp_dir = tempdir().unwrap();
+        let password = ShrinePassword::from("password");
+
+        let mut shrine = Shrine::default();
+        shrine.set("key", "value", Mode::Text).unwrap();
+        let shrine = shrine.close(&password).unwrap();
+        shrine.to_path(temp_dir.path()).unwrap();
+
+        let shrine = Shrine::from_path(temp_dir.path()).unwrap();
+        let shrine = shrine.open(&password).unwrap();
+
+        assert_eq!(
+            shrine.get("key").unwrap().value.expose_secret_as_bytes(),
+            "value".as_bytes()
+        );
+    }
+
+    #[test]
+    fn move_content() {
+        let mut shrine = Shrine::default();
+        shrine.set("key", "value", Mode::Text).unwrap();
+
+        let mut new_shrine = Shrine::default();
+        shrine.move_to(&mut new_shrine);
+
+        assert_eq!(
+            new_shrine
+                .get("key")
+                .unwrap()
+                .value
+                .expose_secret_as_bytes(),
+            "value".as_bytes()
+        );
     }
 }
