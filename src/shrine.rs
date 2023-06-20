@@ -665,7 +665,7 @@ impl From<(String, &Secret)> for Key {
             created_by: secret.created_by().to_string(),
             created_at: *secret.created_at(),
             updated_by: secret.updated_by().map(|s| s.to_string()),
-            updated_at: secret.updated_at().copied()
+            updated_at: secret.updated_at().copied(),
         }
     }
 }
