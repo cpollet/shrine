@@ -1,4 +1,5 @@
 use clap::{command, Parser, Subcommand, ValueEnum};
+use shrine::agent::client::SocketClient;
 use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
 use shrine::controller::get::get;
@@ -7,11 +8,13 @@ use shrine::controller::info::{info, Fields};
 use shrine::controller::init::init;
 use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
+use shrine::controller::set;
 use shrine::controller::set::set;
 #[cfg(unix)]
 use shrine::controller::{agent, config, get};
 use shrine::shrine::{EncryptionAlgorithm, Mode, Shrine, ShrinePassword};
 use shrine::Error;
+use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::{env, fs};
@@ -256,13 +259,18 @@ fn exec(cli: Args) -> Result<(), Error> {
         .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
     let path = fs::canonicalize(path).unwrap();
 
+    #[cfg(unix)]
+    let client = SocketClient::new();
+    #[cfg(not(unix))]
+    let client = NoClient::new();
+
     match &cli.command {
         #[cfg(unix)]
         Some(Commands::Agent { command }) => match command {
-            Some(AgentCommands::Start) => agent::start(),
-            Some(AgentCommands::Stop) => agent::stop(),
-            Some(AgentCommands::ClearPasswords) => agent::clear_passwords(),
-            Some(AgentCommands::Status) => agent::status(),
+            Some(AgentCommands::Start) => agent::start(&client),
+            Some(AgentCommands::Stop) => agent::stop(&client),
+            Some(AgentCommands::ClearPasswords) => agent::clear_passwords(&client),
+            Some(AgentCommands::Status) => agent::status(&client),
             _ => panic!(),
         },
         Some(Commands::Init {
@@ -297,17 +305,27 @@ fn exec(cli: Args) -> Result<(), Error> {
             mode,
             value,
         }) => set(
-            Shrine::from_path(&path)?,
+            &client,
             path,
             password,
             key,
-            *stdin,
-            mode.to_mode(*stdin),
-            value.as_deref(),
+            set::Input {
+                read_from_stdin: *stdin,
+                mode: mode.to_mode(*stdin),
+                value: value.as_deref(),
+            },
         ),
-        Some(Commands::Get { key, encoding }) => get(path, password, key, encoding.into()),
-        Some(Commands::Ls { pattern }) => ls(path, password, pattern.as_ref()),
-        Some(Commands::Rm { key }) => rm(Shrine::from_path(&path)?, path, password, key),
+        Some(Commands::Get { key, encoding }) => {
+            get(&client, path, password, key, encoding.into(), &mut stdout())
+        }
+        Some(Commands::Ls { pattern }) => ls(
+            &client,
+            path,
+            password,
+            pattern.as_ref().map(|p| p.as_str()),
+            &mut stdout(),
+        ),
+        Some(Commands::Rm { key }) => rm(&client, path, password, key),
         Some(Commands::Import { file, prefix }) => import(
             Shrine::from_path(&path)?,
             path,

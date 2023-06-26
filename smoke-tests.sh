@@ -16,7 +16,7 @@ readonly PASSWORD_2="password2"
 export RUST_BACKTRACE=1
 
 echo -n "Init shrine ... "
-$SHRINE --password="$PASSWORD_1" init --force &>/dev/null
+$SHRINE --password "$PASSWORD_1" init --force &>/dev/null
 output="$($SHRINE --password "$PASSWORD_1" ls)"
 [ "$output" != "total 0" ] && echo -e "\n${RED}Expected \`total 0\` got \`$output\`${RESET}" && exit 1
 echo -e "${GREEN}ok${RESET}"

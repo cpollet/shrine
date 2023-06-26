@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod client;
+#[cfg(unix)]
 pub mod server;
 
 #[derive(Deserialize, Serialize, Debug)]
+#[cfg(unix)]
 pub enum ErrorResponse {
     FileNotFound(String),
     Read(String),
@@ -22,6 +24,7 @@ pub enum ErrorResponse {
     Regex(String),
 }
 
+#[cfg(unix)]
 impl ErrorResponse {
     fn status_code(&self) -> StatusCode {
         match self {
@@ -37,24 +40,28 @@ impl ErrorResponse {
     }
 }
 
+#[cfg(unix)]
 impl From<ErrorResponse> for Response {
     fn from(value: ErrorResponse) -> Self {
         (value.status_code(), Json(value)).into_response()
     }
 }
 
+#[cfg(unix)]
 #[derive(Serialize, Deserialize)]
 pub struct SetPasswordRequest {
     pub uuid: Uuid,
     pub password: ShrinePassword,
 }
 
+#[cfg(unix)]
 #[derive(Serialize, Deserialize)]
 pub struct SetSecretRequest {
     pub secret: SecretBytes,
     pub mode: Mode,
 }
 
+#[cfg(unix)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GetSecretsRequest {
     pub regexp: Option<String>,
