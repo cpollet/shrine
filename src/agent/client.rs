@@ -3,14 +3,14 @@ use crate::bytes::SecretBytes;
 use crate::shrine::{Key, Mode, Secret};
 use crate::utils::read_password_from_tty;
 use crate::Error;
+use async_recursion::async_recursion;
 use hyper::body::HttpBody;
 use hyper::{Body, Method, Request};
-use hyperlocal::{UnixClientExt, Uri};
+use hyperlocal::{UnixClientExt, UnixConnector, Uri};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
-use uuid::Uuid;
 
 pub trait Client {
     fn is_running(&self) -> bool;
@@ -31,137 +31,86 @@ pub trait Client {
 }
 
 #[cfg(unix)]
-#[derive(Default)]
-pub struct SocketClient {}
+pub struct HttpClient {
+    rt: Runtime,
+    socket: String,
+    client: hyper::Client<UnixConnector>,
+}
 
 #[cfg(unix)]
-impl SocketClient {
-    pub fn new() -> Self {
-        Self::default()
+impl HttpClient {
+    pub fn new() -> Result<Self, Error> {
+        Ok(Self {
+            rt: tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap(),
+            socket: env::var("XDG_RUNTIME_DIR")
+                .map(|s| format!("{}/shrine.socket", s))
+                .map_err(|_| Error::Agent("XDG_RUNTIME_DIR not set".to_string()))?,
+            client: hyper::Client::unix(),
+        })
     }
 
-    fn rt() -> Runtime {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-    }
-
-    async fn get<T>(uri: &str) -> Result<T, Error>
+    async fn get<T>(&self, uri: &str) -> Result<T, Error>
     where
         T: DoDeserialize,
     {
-        let socket = match env::var("XDG_RUNTIME_DIR") {
-            Ok(dir) => format!("{}/shrine.socket", dir),
-            Err(_) => return Err(Error::Agent("XDG_RUNTIME_DIR not set".to_string())),
-        };
+        self.without_body(uri, Method::GET).await
+    }
 
+    async fn delete<T>(&self, uri: &str) -> Result<T, Error>
+    where
+        T: DoDeserialize,
+    {
+        self.without_body(uri, Method::DELETE).await
+    }
+
+    async fn without_body<T>(&self, uri: &str, method: Method) -> Result<T, Error>
+    where
+        T: DoDeserialize,
+    {
         loop {
             let request = Request::builder()
-                .method(Method::GET)
-                .uri(Uri::new(&socket, uri))
+                .method(method.clone())
+                .uri(Uri::new(&self.socket, uri))
                 .body(Default::default())
                 .unwrap();
 
-            match Self::execute::<T>(request).await? {
-                Response::Payload(payload) => return Ok(payload),
-                Response::Uuid(uuid) => {
-                    let password = read_password_from_tty();
-                    let pwd_request = Request::builder()
-                        .method(Method::PUT)
-                        .header("content-type", "application/json")
-                        .uri(Uri::new(&socket, "/passwords"))
-                        .body(Body::from(
-                            serde_json::to_string(&SetPasswordRequest { uuid, password })
-                                .expect("could not serialize body"),
-                        ))
-                        .expect("could not prepare request");
-                    Self::execute::<Empty>(pwd_request).await?;
-                }
+            if let Some(payload) = self.execute::<T>(request).await? {
+                return Ok(payload);
             }
         }
     }
 
-    async fn put<P, T>(uri: &str, payload: &P) -> Result<T, Error>
+    async fn put<P, T>(&self, uri: &str, payload: &P) -> Result<T, Error>
     where
         P: Serialize,
         T: DoDeserialize,
     {
-        let socket = match env::var("XDG_RUNTIME_DIR") {
-            Ok(dir) => format!("{}/shrine.socket", dir),
-            Err(_) => return Err(Error::Agent("XDG_RUNTIME_DIR not set".to_string())),
-        };
-
         loop {
             let request = Request::builder()
                 .method(Method::PUT)
                 .header("content-type", "application/json")
-                .uri(Uri::new(&socket, uri))
+                .uri(Uri::new(&self.socket, uri))
                 .body(Body::from(
                     serde_json::to_string(payload).expect("could not serialize body"),
                 ))
                 .unwrap();
 
-            match Self::execute::<T>(request).await? {
-                Response::Payload(payload) => return Ok(payload),
-                Response::Uuid(uuid) => {
-                    let password = read_password_from_tty();
-                    let pwd_request = Request::builder()
-                        .method(Method::PUT)
-                        .header("content-type", "application/json")
-                        .uri(Uri::new(&socket, "/passwords"))
-                        .body(Body::from(
-                            serde_json::to_string(&SetPasswordRequest { uuid, password })
-                                .expect("could not serialize body"),
-                        ))
-                        .expect("could not prepare request");
-                    Self::execute::<Empty>(pwd_request).await?;
-                }
+            if let Some(payload) = self.execute::<T>(request).await? {
+                return Ok(payload);
             }
         }
     }
 
-    async fn delete<T>(uri: &str) -> Result<T, Error>
+    #[async_recursion(?Send)]
+    async fn execute<T>(&self, request: Request<Body>) -> Result<Option<T>, Error>
     where
         T: DoDeserialize,
     {
-        let socket = match env::var("XDG_RUNTIME_DIR") {
-            Ok(dir) => format!("{}/shrine.socket", dir),
-            Err(_) => return Err(Error::Agent("XDG_RUNTIME_DIR not set".to_string())),
-        };
-
-        loop {
-            let request = Request::builder()
-                .method(Method::DELETE)
-                .uri(Uri::new(&socket, uri))
-                .body(Default::default())
-                .unwrap();
-
-            match Self::execute::<T>(request).await? {
-                Response::Payload(payload) => return Ok(payload),
-                Response::Uuid(uuid) => {
-                    let password = read_password_from_tty();
-                    let pwd_request = Request::builder()
-                        .method(Method::PUT)
-                        .header("content-type", "application/json")
-                        .uri(Uri::new(&socket, "/passwords"))
-                        .body(Body::from(
-                            serde_json::to_string(&SetPasswordRequest { uuid, password })
-                                .expect("could not serialize body"),
-                        ))
-                        .expect("could not prepare request");
-                    Self::execute::<Empty>(pwd_request).await?;
-                }
-            }
-        }
-    }
-
-    async fn execute<T>(request: Request<Body>) -> Result<Response<T>, Error>
-    where
-        T: DoDeserialize,
-    {
-        let client = hyper::Client::unix();
-        let mut response = client
+        let mut response = self
+            .client
             .request(request)
             .await
             .map_err(|_| Error::Agent("communication problem".to_string()))?;
@@ -174,7 +123,7 @@ impl SocketClient {
         if response.status().is_success() {
             return T::do_deserialize(&payload)
                 .map_err(|_| Error::Agent("invalid response data".to_string()))
-                .map(|s| Response::Payload(s));
+                .map(|s| Some(s));
         }
 
         match serde_json::from_slice::<ErrorResponse>(&payload).map_err(|_| {
@@ -184,8 +133,17 @@ impl SocketClient {
             ))
         })? {
             ErrorResponse::FileNotFound(file) => Err(Error::FileNotFound(PathBuf::from(file))),
-            ErrorResponse::Unauthorized(uuid) => Ok(Response::Uuid(uuid)),
-            ErrorResponse::Forbidden(uuid) => Ok(Response::Uuid(uuid)),
+            ErrorResponse::Unauthorized(uuid) | ErrorResponse::Forbidden(uuid) => {
+                self.put::<_, Empty>(
+                    "/passwords",
+                    &SetPasswordRequest {
+                        uuid,
+                        password: read_password_from_tty(),
+                    },
+                )
+                .await?;
+                Ok(None)
+            }
             ErrorResponse::KeyNotFound { key, .. } => Err(Error::KeyNotFound(key)),
             ErrorResponse::Regex(e) => Err(Error::InvalidPattern(regex::Error::Syntax(e))),
             _ => Err(Error::Agent("unknown error".to_string())),
@@ -194,21 +152,21 @@ impl SocketClient {
 }
 
 #[cfg(unix)]
-impl Client for SocketClient {
+impl Client for HttpClient {
     fn is_running(&self) -> bool {
-        Self::rt().block_on(Self::get::<u32>("/pid")).is_ok()
+        self.rt.block_on(self.get::<u32>("/pid")).is_ok()
     }
 
     fn pid(&self) -> Option<u32> {
-        Self::rt().block_on(Self::get::<u32>("/pid")).ok()
+        self.rt.block_on(self.get::<u32>("/pid")).ok()
     }
 
     fn stop(&self) -> Result<(), Error> {
-        Self::rt().block_on(Self::delete::<Empty>("/")).map(|_| ())
+        self.rt.block_on(self.delete::<Empty>("/")).map(|_| ())
     }
 
     fn get_key(&self, path: &str, key: &str) -> Result<Secret, Error> {
-        Self::rt().block_on(Self::get::<Secret>(&format!(
+        self.rt.block_on(self.get::<Secret>(&format!(
             "/keys/{}/{}",
             urlencoding::encode(path),
             urlencoding::encode(key)
@@ -216,8 +174,8 @@ impl Client for SocketClient {
     }
 
     fn set_key(&self, path: &str, key: &str, value: Vec<u8>, mode: Mode) -> Result<(), Error> {
-        Self::rt()
-            .block_on(Self::put::<_, Empty>(
+        self.rt
+            .block_on(self.put::<_, Empty>(
                 &format!(
                     "/keys/{}/{}",
                     urlencoding::encode(path),
@@ -232,7 +190,7 @@ impl Client for SocketClient {
     }
 
     fn delete_key(&self, path: &str, key: &str) -> Result<Vec<Secret>, Error> {
-        Self::rt().block_on(Self::delete::<Vec<Secret>>(&format!(
+        self.rt.block_on(self.delete::<Vec<Secret>>(&format!(
             "/keys/{}/{}",
             urlencoding::encode(path),
             urlencoding::encode(key)
@@ -240,7 +198,7 @@ impl Client for SocketClient {
     }
 
     fn ls(&self, path: &str, regexp: Option<&str>) -> Result<Vec<Key>, Error> {
-        Self::rt().block_on(Self::get::<Vec<Key>>(&format!(
+        self.rt.block_on(self.get::<Vec<Key>>(&format!(
             "/keys/{}?{}",
             urlencoding::encode(path),
             serde_qs::to_string(&GetSecretsRequest {
@@ -251,8 +209,8 @@ impl Client for SocketClient {
     }
 
     fn clear_passwords(&self) -> Result<(), Error> {
-        Self::rt()
-            .block_on(Self::delete::<Empty>("/passwords"))
+        self.rt
+            .block_on(self.delete::<Empty>("/passwords"))
             .map(|_| ())
     }
 }
@@ -293,12 +251,6 @@ impl Client for NoClient {
     fn clear_passwords(&self) -> Result<(), Error> {
         unimplemented!()
     }
-}
-
-#[cfg(unix)]
-enum Response<T> {
-    Payload(T),
-    Uuid(Uuid),
 }
 
 #[cfg(unix)]

@@ -38,6 +38,7 @@ uuid = "1.4.0"
 whoami = { version = "1.4.1", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
+async-recursion = "1.0.4"
 serde_qs = "0.12.0"
 tokio-cron-scheduler = "0.9.4"
 tracing = "0.1.37"
