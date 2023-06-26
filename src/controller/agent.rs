@@ -1,10 +1,14 @@
-use crate::agent::client;
+use crate::agent::client::Client;
 use crate::Error;
 use daemonize::Daemonize;
 use std::env;
 use std::fs::File;
 
-pub fn start() -> Result<(), Error> {
+pub fn start<C: Client>(client: &C) -> Result<(), Error> {
+    if client.is_running() {
+        return Ok(());
+    }
+
     // https://specifications.freedesktop.org/basedir-spec/latest/ar01s03.html
     let runtime_dir = env::var("XDG_RUNTIME_DIR").expect("$XDG_RUNTIME_DIR is not set or is invalid; read https://specifications.freedesktop.org/basedir-spec/latest/ar01s03.html");
 
@@ -33,20 +37,20 @@ pub fn start() -> Result<(), Error> {
     Ok(())
 }
 
-pub fn stop() -> Result<(), Error> {
-    if client::is_running() {
-        client::stop()
+pub fn stop<C: Client>(client: &C) -> Result<(), Error> {
+    if client.is_running() {
+        client.stop()
     } else {
         Ok(())
     }
 }
 
-pub fn clear_passwords() -> Result<(), Error> {
-    client::clear_passwords()
+pub fn clear_passwords<C: Client>(client: &C) -> Result<(), Error> {
+    client.clear_passwords()
 }
 
-pub fn status() -> Result<(), Error> {
-    match client::pid() {
+pub fn status<C: Client>(client: &C) -> Result<(), Error> {
+    match client.pid() {
         None => {
             println!("Is running: false");
         }
