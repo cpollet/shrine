@@ -42,7 +42,7 @@ pub async fn serve(pidfile: String, socketfile: String) {
         .init();
 
     let (tx, rx) = channel::<()>();
-    let state = AgentState::new(DefaultShrineProvider {}, tx);
+    let state = AgentState::new(DefaultShrineProvider::default(), tx);
 
     let mut scheduler = JobScheduler::new().await.unwrap();
 
@@ -423,7 +423,7 @@ trait ShrineProvider: Clone {
         P: AsRef<std::path::Path>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct DefaultShrineProvider {}
 
 impl ShrineProvider for DefaultShrineProvider {
@@ -446,7 +446,7 @@ impl ShrineProvider for DefaultShrineProvider {
 mod tests {
     use super::*;
     use crate::bytes::SecretBytes;
-    use crate::shrine::{EncryptionAlgorithm, Mode, ShrineBuilder};
+    use crate::shrine::{Closed, EncryptionAlgorithm, Mode, ShrineBuilder};
     use axum::body::HttpBody;
     use std::cell::RefCell;
     use std::rc::Rc;

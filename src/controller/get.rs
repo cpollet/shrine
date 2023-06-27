@@ -1,29 +1,28 @@
 use crate::agent::client::Client;
-use crate::shrine::{Mode, Secret, Shrine, ShrinePassword};
+use crate::shrine::{Mode, Secret, ShrinePassword, ShrineProvider};
 use crate::utils::read_password;
 use crate::Error;
 use atty::Stream;
 use base64::Engine;
 use std::io::Write;
-use std::path::Path;
 
-pub fn get<C, P, W>(
-    client: &C,
-    path: P,
+pub fn get<C, P, O>(
+    client: C,
+    shrine_provider: P,
     password: Option<ShrinePassword>,
     key: &str,
     encoding: Encoding,
-    out: &mut W,
+    out: &mut O,
 ) -> Result<(), Error>
 where
     C: Client,
-    P: AsRef<Path>,
-    W: Write,
+    P: ShrineProvider,
+    O: Write,
 {
     let secret = if client.is_running() {
-        encoding.encode(&client.get_key(path.as_ref().to_str().unwrap(), key)?)
+        encoding.encode(&client.get_key(shrine_provider.path().to_str().unwrap(), key)?)
     } else {
-        let shrine = Shrine::from_path(&path)?;
+        let shrine = shrine_provider.load()?;
         let password = password.unwrap_or_else(|| read_password(&shrine));
         let shrine = shrine.open(&password)?;
         let secret = shrine.get(key.as_ref())?;
@@ -67,13 +66,43 @@ impl Encoding {
 mod tests {
     use super::*;
     use crate::agent::client::mock::MockClient;
+    use crate::shrine::mocks::MockShrineProvider;
+    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
+
+    #[test]
+    fn get_direct() {
+        let mut client = MockClient::default();
+        client.with_is_running(false);
+
+        let mut shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+            .build();
+        shrine.set("key", "secret", Mode::Text).unwrap();
+        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+
+        let shrine_provider = MockShrineProvider::new(shrine);
+
+        let mut out = Vec::<u8>::new();
+
+        get(
+            client,
+            shrine_provider,
+            None,
+            "key",
+            Encoding::Raw,
+            &mut out,
+        )
+        .expect("expected Ok(())");
+
+        assert_eq!(out.as_slice(), "secret".as_bytes());
+    }
 
     #[test]
     fn get_through_agent() {
-        let mut mock = MockClient::default();
-        mock.with_is_running(true);
-        mock.with_get_key(
-            "path",
+        let mut client = MockClient::default();
+        client.with_is_running(true);
+        client.with_get_key(
+            "/path/to/shrine",
             "key",
             Ok(serde_json::from_str::<Secret>(
                 r#"
@@ -90,7 +119,15 @@ mod tests {
 
         let mut out = Vec::<u8>::new();
 
-        get(&mock, "path", None, "key", Encoding::Raw, &mut out).expect("expected Ok(())");
+        get(
+            client,
+            MockShrineProvider::default(),
+            None,
+            "key",
+            Encoding::Raw,
+            &mut out,
+        )
+        .expect("expected Ok(())");
 
         assert_eq!(out.as_slice(), "secret".as_bytes());
     }
