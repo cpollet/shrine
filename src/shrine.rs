@@ -670,6 +670,88 @@ impl From<(String, &Secret)> for Key {
     }
 }
 
+pub trait ShrineProvider {
+    fn load(&self) -> Result<Shrine<Closed>, Error>;
+
+    fn save(&self, shrine: Shrine<Closed>) -> Result<(), Error>;
+
+    fn path(&self) -> &Path;
+}
+
+pub struct FilesystemShrineProvider {
+    path: PathBuf,
+}
+
+impl FilesystemShrineProvider {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl ShrineProvider for FilesystemShrineProvider {
+    fn load(&self) -> Result<Shrine<Closed>, Error> {
+        Shrine::from_path(&self.path)
+    }
+
+    fn save(&self, shrine: Shrine<Closed>) -> Result<(), Error> {
+        shrine.to_path(&self.path)
+    }
+
+    fn path(&self) -> &Path {
+        self.path.as_ref()
+    }
+}
+
+#[cfg(test)]
+pub mod mocks {
+    use super::*;
+    use crate::shrine::{Closed, Shrine};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Clone)]
+    pub struct MockShrineProvider {
+        shrine: Rc<RefCell<Shrine<Closed>>>,
+    }
+
+    impl MockShrineProvider {
+        pub fn new(shrine: Shrine<Closed>) -> Self {
+            Self {
+                shrine: Rc::new(RefCell::new(shrine)),
+            }
+        }
+    }
+
+    impl Default for MockShrineProvider {
+        fn default() -> Self {
+            MockShrineProvider::new(
+                ShrineBuilder::new()
+                    .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+                    .build()
+                    .close(&ShrinePassword::from(""))
+                    .unwrap(),
+            )
+        }
+    }
+
+    impl ShrineProvider for MockShrineProvider {
+        fn load(&self) -> Result<Shrine<Closed>, Error> {
+            Ok(self
+                .shrine
+                .replace(Shrine::default().close(&ShrinePassword::from("")).unwrap()))
+        }
+
+        fn save(&self, shrine: Shrine<Closed>) -> Result<(), Error> {
+            self.shrine.replace(shrine);
+            Ok(())
+        }
+
+        fn path(&self) -> &Path {
+            Path::new("/path/to/shrine")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

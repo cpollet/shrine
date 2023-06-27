@@ -12,7 +12,7 @@ use shrine::controller::set;
 use shrine::controller::set::set;
 #[cfg(unix)]
 use shrine::controller::{agent, config, get};
-use shrine::shrine::{EncryptionAlgorithm, Mode, Shrine, ShrinePassword};
+use shrine::shrine::{EncryptionAlgorithm, FilesystemShrineProvider, Mode, Shrine, ShrinePassword};
 use shrine::Error;
 use std::io::stdout;
 use std::path::PathBuf;
@@ -264,6 +264,9 @@ fn exec(cli: Args) -> Result<(), Error> {
     #[cfg(not(unix))]
     let client = NoClient::new();
 
+    // TODO remove .clone()
+    let shrine_provider = FilesystemShrineProvider::new(path.clone());
+
     match &cli.command {
         #[cfg(unix)]
         Some(Commands::Agent { command }) => match command {
@@ -305,8 +308,8 @@ fn exec(cli: Args) -> Result<(), Error> {
             mode,
             value,
         }) => set(
-            &client,
-            path,
+            client,
+            shrine_provider,
             password,
             key,
             set::Input {
@@ -315,17 +318,22 @@ fn exec(cli: Args) -> Result<(), Error> {
                 value: value.as_deref(),
             },
         ),
-        Some(Commands::Get { key, encoding }) => {
-            get(&client, path, password, key, encoding.into(), &mut stdout())
-        }
+        Some(Commands::Get { key, encoding }) => get(
+            client,
+            shrine_provider,
+            password,
+            key,
+            encoding.into(),
+            &mut stdout(),
+        ),
         Some(Commands::Ls { pattern }) => ls(
-            &client,
-            path,
+            client,
+            shrine_provider,
             password,
             pattern.as_ref().map(|p| p.as_str()),
             &mut stdout(),
         ),
-        Some(Commands::Rm { key }) => rm(&client, path, password, key),
+        Some(Commands::Rm { key }) => rm(client, shrine_provider, password, key),
         Some(Commands::Import { file, prefix }) => import(
             Shrine::from_path(&path)?,
             path,
