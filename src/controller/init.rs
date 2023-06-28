@@ -1,23 +1,22 @@
 use crate::git::Repository;
-use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
+use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword, ShrineProvider};
 use crate::utils::read_new_password;
 use crate::{git, Error, SHRINE_FILENAME};
-
-use std::path::Path;
-use std::path::PathBuf;
 use std::string::ToString;
 
-pub fn init(
-    path: PathBuf,
+pub fn init<P>(
+    shrine_provider: P,
     password: Option<ShrinePassword>,
     force: bool,
     encryption: Option<EncryptionAlgorithm>,
     git: bool,
-) -> Result<(), Error> {
-    let mut file = PathBuf::from(&path);
-    file.push(SHRINE_FILENAME);
+) -> Result<(), Error>
+where
+    P: ShrineProvider,
+{
+    let file = shrine_provider.path().join(SHRINE_FILENAME);
 
-    if !force && Path::new(&file).exists() {
+    if !force && file.exists() {
         return Err(Error::FileAlreadyExists(file.display().to_string()));
     }
 
@@ -37,9 +36,9 @@ pub fn init(
         git::write_configuration(&mut shrine);
     }
 
-    let repository = Repository::new(path.clone(), &shrine);
+    let repository = Repository::new(shrine_provider.path(), &shrine);
 
-    shrine.close(&password)?.to_path(&path)?;
+    shrine_provider.save(shrine.close(&password)?)?;
 
     print!("Initialized new shrine in `{}`", file.display());
 

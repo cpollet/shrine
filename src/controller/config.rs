@@ -1,30 +1,29 @@
 use crate::git::Repository;
-use crate::shrine::{Closed, Shrine, ShrinePassword};
+use crate::shrine::{ ShrinePassword, ShrineProvider};
 use crate::utils::read_password;
 use crate::Error;
 use rpassword::prompt_password;
 
 use std::io::{stdout, Write};
-use std::path::PathBuf;
 
-pub fn set(
-    shrine: Shrine<Closed>,
-    path: PathBuf,
+pub fn set<P>(
+    shrine_provider: P,
     password: Option<ShrinePassword>,
     key: &String,
     value: Option<&str>,
-) -> Result<(), Error> {
+) -> Result<(), Error> where P: ShrineProvider {
+    let shrine = shrine_provider.load()?;
     let password = password.unwrap_or_else(|| read_password(&shrine));
-
     let mut shrine = shrine.open(&password)?;
-    let repository = Repository::new(path.clone(), &shrine);
+
+    let repository = Repository::new(shrine_provider.path(), &shrine);
 
     let value = value
         .map(|v| v.to_string())
         .unwrap_or_else(|| prompt_password("Value: ").unwrap());
 
     shrine.set_private(key.to_string(), value);
-    shrine.close(&password)?.to_path(&path)?;
+    shrine_provider.save(shrine.close(&password)?)?;
 
     if let Some(repository) = repository {
         if repository.commit_auto() {
@@ -37,14 +36,13 @@ pub fn set(
     Ok(())
 }
 
-pub fn get(
-    shrine: Shrine<Closed>,
-    _path: PathBuf,
+pub fn get<P>(
+    shrine_provider: P,
     password: Option<ShrinePassword>,
     key: &String,
-) -> Result<(), Error> {
+) -> Result<(), Error> where P : ShrineProvider{
+    let shrine = shrine_provider.load()?;
     let password = password.unwrap_or_else(|| read_password(&shrine));
-
     let shrine = shrine.open(&password)?;
 
     let secret = shrine
