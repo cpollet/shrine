@@ -1,25 +1,22 @@
-use crate::shrine::{Closed, Mode, Shrine, ShrinePassword};
+use crate::shrine::{Mode, ShrinePassword, ShrineProvider};
 use crate::utils::read_password;
 use crate::{Error, SHRINE_FILENAME};
 use base64::Engine;
 use regex::Regex;
 
-use std::path::PathBuf;
-
-pub fn dump(
-    shrine: Shrine<Closed>,
-    path: PathBuf,
+pub fn dump<P>(
+    shrine_provider: P,
     password: Option<ShrinePassword>,
     pattern: Option<&String>,
     private: bool,
-) -> Result<(), Error> {
+) -> Result<(), Error> where P: ShrineProvider {
     let regex = pattern
         .map(|p| Regex::new(p.as_ref()))
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
+    let shrine = shrine_provider.load()?;
     let password = password.unwrap_or_else(|| read_password(&shrine));
-
     let shrine = shrine.open(&password)?;
 
     let mut keys = shrine
@@ -29,7 +26,7 @@ pub fn dump(
         .collect::<Vec<String>>();
     keys.sort_unstable();
 
-    println!("Shrine `{}/{}`", &path.display(), SHRINE_FILENAME);
+    println!("Shrine `{}/{}`", shrine_provider.path().display(), SHRINE_FILENAME);
     println!("Secrets:");
     for key in keys.iter() {
         let secret = shrine.get(key)?;

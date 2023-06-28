@@ -4,7 +4,7 @@ use daemonize::Daemonize;
 use std::env;
 use std::fs::File;
 
-pub fn start<C: Client>(client: &C) -> Result<(), Error> {
+pub fn start<C: Client>(client: C) -> Result<(), Error> {
     if client.is_running() {
         return Ok(());
     }
@@ -37,7 +37,7 @@ pub fn start<C: Client>(client: &C) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn stop<C: Client>(client: &C) -> Result<(), Error> {
+pub fn stop<C: Client>(client: C) -> Result<(), Error> {
     if client.is_running() {
         client.stop()
     } else {
@@ -45,11 +45,11 @@ pub fn stop<C: Client>(client: &C) -> Result<(), Error> {
     }
 }
 
-pub fn clear_passwords<C: Client>(client: &C) -> Result<(), Error> {
+pub fn clear_passwords<C: Client>(client: C) -> Result<(), Error> {
     client.clear_passwords()
 }
 
-pub fn status<C: Client>(client: &C) -> Result<(), Error> {
+pub fn status<C: Client>(client: C) -> Result<(), Error> {
     match client.pid() {
         None => {
             println!("Is running: false");

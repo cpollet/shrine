@@ -12,7 +12,7 @@ use shrine::controller::set;
 use shrine::controller::set::set;
 #[cfg(unix)]
 use shrine::controller::{agent, config, get};
-use shrine::shrine::{EncryptionAlgorithm, FilesystemShrineProvider, Mode, Shrine, ShrinePassword};
+use shrine::shrine::{EncryptionAlgorithm, FilesystemShrineProvider, Mode, ShrinePassword};
 use shrine::Error;
 use std::io::stdout;
 use std::path::PathBuf;
@@ -264,16 +264,15 @@ fn exec(cli: Args) -> Result<(), Error> {
     #[cfg(not(unix))]
     let client = NoClient::new();
 
-    // TODO remove .clone()
-    let shrine_provider = FilesystemShrineProvider::new(path.clone());
+    let shrine_provider = FilesystemShrineProvider::new(path);
 
     match &cli.command {
         #[cfg(unix)]
         Some(Commands::Agent { command }) => match command {
-            Some(AgentCommands::Start) => agent::start(&client),
-            Some(AgentCommands::Stop) => agent::stop(&client),
-            Some(AgentCommands::ClearPasswords) => agent::clear_passwords(&client),
-            Some(AgentCommands::Status) => agent::status(&client),
+            Some(AgentCommands::Start) => agent::start(client),
+            Some(AgentCommands::Stop) => agent::stop(client),
+            Some(AgentCommands::ClearPasswords) => agent::clear_passwords(client),
+            Some(AgentCommands::Status) => agent::status(client),
             _ => panic!(),
         },
         Some(Commands::Init {
@@ -281,7 +280,7 @@ fn exec(cli: Args) -> Result<(), Error> {
             encryption,
             git,
         }) => init(
-            path,
+            shrine_provider,
             password,
             *force,
             encryption.map(|algo| algo.into()),
@@ -292,16 +291,13 @@ fn exec(cli: Args) -> Result<(), Error> {
             new_password,
             encryption,
         }) => convert(
-            Shrine::from_path(&path)?,
-            path,
+            shrine_provider,
             password,
             *change_password,
             new_password.as_ref().map(ShrinePassword::from),
             encryption.map(|algo| algo.into()),
         ),
-        Some(Commands::Info { field }) => {
-            info(Shrine::from_path(&path)?, path, (*field).map(Fields::from))
-        }
+        Some(Commands::Info { field }) => info(shrine_provider, (*field).map(Fields::from)),
         Some(Commands::Set {
             key,
             stdin,
@@ -334,30 +330,24 @@ fn exec(cli: Args) -> Result<(), Error> {
             &mut stdout(),
         ),
         Some(Commands::Rm { key }) => rm(client, shrine_provider, password, key),
-        Some(Commands::Import { file, prefix }) => import(
-            Shrine::from_path(&path)?,
-            path,
-            password,
-            file,
-            prefix.as_deref(),
-        ),
+        Some(Commands::Import { file, prefix }) => {
+            import(shrine_provider, password, file, prefix.as_deref())
+        }
         Some(Commands::Dump { pattern, config }) => dump(
-            Shrine::from_path(&path)?,
-            path,
+            shrine_provider,
             password,
             pattern.as_ref(),
             *config,
         ),
         Some(Commands::Config { command }) => match command {
             Some(ConfigCommands::Set { key, value }) => config::set(
-                Shrine::from_path(&path)?,
-                path,
+                shrine_provider,
                 password,
                 key,
                 value.as_deref(),
             ),
             Some(ConfigCommands::Get { key }) => {
-                config::get(Shrine::from_path(&path)?, path, password, key)
+                config::get(shrine_provider, password, key)
             }
             _ => panic!(),
         },
