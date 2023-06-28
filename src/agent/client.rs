@@ -144,7 +144,7 @@ where
             let request = Request::builder()
                 .method(method.clone())
                 .uri(self.client.uri(uri))
-                .body(Default::default())
+                .body(Body::empty())
                 .unwrap();
 
             if let Some(payload) = self.execute::<T>(request).await? {

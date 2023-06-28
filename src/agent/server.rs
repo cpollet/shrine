@@ -67,19 +67,9 @@ pub async fn serve(pidfile: String, socketfile: String) {
 
     scheduler.start().await.unwrap();
 
-    let app = Router::new()
-        .route("/", delete(delete_agent))
-        .route("/pid", get(get_pid))
-        .route("/passwords", put(put_password))
-        .route("/passwords", delete(delete_passwords))
-        .route("/keys/:file", get(get_secrets))
-        .route("/keys/:file/:key", get(get_key))
-        .route("/keys/:file/:key", put(put_key))
-        .route("/keys/:file/:key", delete(delete_key))
-        .with_state(state);
-
-    if let Ok(x) = Server::bind_unix(&socketfile) {
-        x.serve(app.into_make_service())
+    if let Ok(builder) = Server::bind_unix(&socketfile) {
+        builder
+            .serve(router().with_state(state).into_make_service())
             .with_graceful_shutdown(shutdown(rx))
             .await
             .unwrap();
@@ -91,6 +81,21 @@ pub async fn serve(pidfile: String, socketfile: String) {
     }
 
     scheduler.shutdown().await.unwrap();
+}
+
+fn router<P>() -> Router<AgentState<P>>
+where
+    P: ShrineProvider,
+{
+    Router::new()
+        .route("/", delete(delete_agent))
+        .route("/pid", get(get_pid))
+        .route("/passwords", put(put_password))
+        .route("/passwords", delete(delete_passwords))
+        .route("/keys/:file", get(get_keys))
+        .route("/keys/:file/:key", get(get_key))
+        .route("/keys/:file/:key", put(put_key))
+        .route("/keys/:file/:key", delete(delete_key))
 }
 
 async fn shutdown(shutdown_http_signal_rx: Receiver<()>) {
@@ -118,9 +123,9 @@ async fn shutdown(shutdown_http_signal_rx: Receiver<()>) {
     info!("Shut down HTTP server");
 }
 
-async fn delete_agent<Provider>(State(state): State<AgentState<Provider>>)
+async fn delete_agent<P>(State(state): State<AgentState<P>>)
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!("delete_agent");
     let channel = channel::<()>();
@@ -135,34 +140,34 @@ async fn get_pid() -> String {
     serde_json::to_string(&process::id()).unwrap()
 }
 
-async fn put_password<Provider>(
-    State(state): State<AgentState<Provider>>,
+async fn put_password<P>(
+    State(state): State<AgentState<P>>,
     Json(set_password_request): Json<SetPasswordRequest>,
 ) where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!("set_password");
     state.set_password(set_password_request.uuid, set_password_request.password);
 }
 
-async fn delete_passwords<Provider>(State(state): State<AgentState<Provider>>)
+async fn delete_passwords<P>(State(state): State<AgentState<P>>)
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!("delete_passwords");
     state.delete_passwords();
 }
 
-async fn get_secrets<Provider>(
-    State(state): State<AgentState<Provider>>,
+async fn get_keys<P>(
+    State(state): State<AgentState<P>>,
     Path(path): Path<String>,
     Query(params): Query<GetSecretsRequest>,
 ) -> Response
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!(
-        "get_secrets from file `{}/{}` ({:?})",
+        "get_keys from file `{}/{}` ({:?})",
         path, SHRINE_FILENAME, params
     );
 
@@ -177,7 +182,7 @@ where
         Ok(regex) => regex,
     };
 
-    let shrine = match open_shrine::<Provider>(&state, &path) {
+    let shrine = match open_shrine::<P>(&state, &path) {
         Ok((shrine, _)) => shrine,
         Err(response) => return response,
     };
@@ -202,16 +207,16 @@ where
     Json(secrets).into_response()
 }
 
-async fn get_key<Provider>(
-    State(state): State<AgentState<Provider>>,
+async fn get_key<P>(
+    State(state): State<AgentState<P>>,
     Path((path, key)): Path<(String, String)>,
 ) -> Response
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!("get_key `{}` from file `{}/{}`", key, path, SHRINE_FILENAME);
 
-    let shrine = match open_shrine::<Provider>(&state, &path) {
+    let shrine = match open_shrine::<P>(&state, &path) {
         Ok((shrine, _)) => shrine,
         Err(response) => return response,
     };
@@ -222,12 +227,9 @@ where
     }
 }
 
-fn open_shrine<Provider>(
-    state: &AgentState<Provider>,
-    path: &str,
-) -> Result<(Shrine, ShrinePassword), Response>
+fn open_shrine<P>(state: &AgentState<P>, path: &str) -> Result<(Shrine, ShrinePassword), Response>
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     let shrine = match state
         .shrine_provider
@@ -260,17 +262,17 @@ where
     Ok((shrine, shrine_password))
 }
 
-async fn put_key<Provider>(
-    State(state): State<AgentState<Provider>>,
+async fn put_key<P>(
+    State(state): State<AgentState<P>>,
     Path((path, key)): Path<(String, String)>,
     Json(request): Json<SetSecretRequest>,
 ) -> Response
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!("set_key `{}` on file `{}/{}`", key, path, SHRINE_FILENAME);
 
-    let (mut shrine, shrine_password) = match open_shrine::<Provider>(&state, &path) {
+    let (mut shrine, shrine_password) = match open_shrine::<P>(&state, &path) {
         Ok(v) => v,
         Err(response) => return response,
     };
@@ -311,19 +313,19 @@ where
         .unwrap()
 }
 
-async fn delete_key<Provider>(
-    State(state): State<AgentState<Provider>>,
+async fn delete_key<P>(
+    State(state): State<AgentState<P>>,
     Path((path, key)): Path<(String, String)>,
 ) -> Response
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
     info!(
         "delete_key `{}` on file `{}/{}`",
         key, path, SHRINE_FILENAME
     );
 
-    let (mut shrine, shrine_password) = match open_shrine::<Provider>(&state, &path) {
+    let (mut shrine, shrine_password) = match open_shrine::<P>(&state, &path) {
         Ok(v) => v,
         Err(response) => return response,
     };
@@ -360,21 +362,21 @@ where
 }
 
 #[derive(Clone)]
-struct AgentState<Provider>
+struct AgentState<P>
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
-    shrine_provider: Provider,
+    shrine_provider: P,
     http_shutdown_tx: Arc<Mutex<Sender<()>>>,
     passwords: Arc<Mutex<HashMap<Uuid, ATimePassword>>>,
 }
 type ATimePassword = (DateTime<Utc>, ShrinePassword);
 
-impl<Provider> AgentState<Provider>
+impl<P> AgentState<P>
 where
-    Provider: ShrineProvider,
+    P: ShrineProvider,
 {
-    fn new(shrine_provider: Provider, http_shutdown_tx: Sender<()>) -> Self {
+    fn new(shrine_provider: P, http_shutdown_tx: Sender<()>) -> Self {
         Self {
             shrine_provider,
             http_shutdown_tx: Arc::new(Mutex::new(http_shutdown_tx)),
@@ -413,7 +415,7 @@ where
     }
 }
 
-trait ShrineProvider: Clone {
+trait ShrineProvider: Clone + Send + Sync + 'static {
     fn load_from_path<P>(&self, path: P) -> Result<Shrine<Closed>, Error>
     where
         P: AsRef<std::path::Path>;
@@ -448,18 +450,20 @@ mod tests {
     use crate::bytes::SecretBytes;
     use crate::shrine::{Closed, EncryptionAlgorithm, Mode, ShrineBuilder};
     use axum::body::HttpBody;
+    use axum::http::Request;
+    use hyper::Body;
     use std::cell::RefCell;
-    use std::rc::Rc;
+    use tower::ServiceExt;
 
     #[derive(Clone)]
     struct MockShrineProvider {
-        shrine: Rc<RefCell<Shrine<Closed>>>,
+        shrine: Arc<Mutex<RefCell<Shrine<Closed>>>>,
     }
 
     impl MockShrineProvider {
         fn new(shrine: Shrine<Closed>) -> Self {
             Self {
-                shrine: Rc::new(RefCell::new(shrine)),
+                shrine: Arc::new(Mutex::new(RefCell::new(shrine))),
             }
         }
     }
@@ -471,6 +475,8 @@ mod tests {
         {
             Ok(self
                 .shrine
+                .lock()
+                .unwrap()
                 .replace(Shrine::default().close(&ShrinePassword::from("")).unwrap()))
         }
 
@@ -478,7 +484,7 @@ mod tests {
         where
             P: AsRef<std::path::Path>,
         {
-            self.shrine.replace(shrine);
+            self.shrine.lock().unwrap().replace(shrine);
             Ok(())
         }
     }
@@ -602,7 +608,7 @@ mod tests {
 
         let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
 
-        let response = super::get_secrets(
+        let response = super::get_keys(
             state,
             Path("fake_path".to_string()),
             Query(GetSecretsRequest {
@@ -671,5 +677,239 @@ mod tests {
         let value = super::get_key(state, Path((String::default(), "key".to_string()))).await;
 
         assert_eq!(value.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn route_get_pid() {
+        let (tx, _) = channel::<()>();
+        let state = AgentState::new(
+            MockShrineProvider::new(Shrine::default().close(&ShrinePassword::from("")).unwrap()),
+            tx,
+        );
+
+        let response = router()
+            .with_state(state)
+            .oneshot(Request::get("/pid").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn route_get_key_requires_password() {
+        let (tx, _) = channel::<()>();
+        let shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Aes)
+            .build()
+            .close(&ShrinePassword::from(""))
+            .unwrap();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state)
+            .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn route_put_password_then_get_key_then_delete_password() {
+        let (tx, _) = channel::<()>();
+        let mut shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Aes)
+            .build();
+        shrine.set("key", "value", Mode::Text).unwrap();
+        let shrine = shrine.close(&ShrinePassword::from("password")).unwrap();
+
+        let uuid = shrine.uuid();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state.clone())
+            .oneshot(
+                Request::put("/passwords")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_string(&SetPasswordRequest {
+                            uuid,
+                            password: ShrinePassword::from("password"),
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = router()
+            .with_state(state.clone())
+            .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = router()
+            .with_state(state.clone())
+            .oneshot(Request::delete("/passwords").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = router()
+            .with_state(state)
+            .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn route_get_key_not_found() {
+        let (tx, _) = channel::<()>();
+        let shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+            .build()
+            .close(&ShrinePassword::from(""))
+            .unwrap();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state)
+            .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn route_get_key() {
+        let (tx, _) = channel::<()>();
+        let mut shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+            .build();
+        shrine.set("key", "value", Mode::Text).unwrap();
+        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state)
+            .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let secret = serde_json::from_slice::<Secret>(
+            &response.into_body().data().await.unwrap().unwrap().to_vec(),
+        )
+        .unwrap();
+
+        assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes());
+    }
+
+    #[tokio::test]
+    async fn route_get_secrets() {
+        let (tx, _) = channel::<()>();
+        let mut shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+            .build();
+        shrine.set("key", "value", Mode::Text).unwrap();
+        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state)
+            .oneshot(Request::get("/keys/file").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let keys = serde_json::from_slice::<Vec<Key>>(
+            &response.into_body().data().await.unwrap().unwrap().to_vec(),
+        )
+        .unwrap();
+
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys.get(0).unwrap().key, "key");
+        assert_eq!(keys.get(0).unwrap().mode, Mode::Text);
+    }
+
+    #[tokio::test]
+    async fn route_delete_key() {
+        let (tx, _) = channel::<()>();
+        let mut shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+            .build();
+        shrine.set("key", "value", Mode::Text).unwrap();
+        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state.clone())
+            .oneshot(
+                Request::delete("/keys/file/key")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let shrine = state
+            .shrine_provider
+            .load_from_path("")
+            .unwrap()
+            .open(&ShrinePassword::from(""))
+            .unwrap();
+
+        let error = shrine.get("key").err().unwrap();
+        assert_eq!(error.to_string(), "Key `key` does not exist");
+    }
+
+    #[tokio::test]
+    async fn route_set_key() {
+        let (tx, _) = channel::<()>();
+        let shrine = ShrineBuilder::new()
+            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+            .build()
+            .close(&ShrinePassword::from(""))
+            .unwrap();
+        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+
+        let response = router()
+            .with_state(state.clone())
+            .oneshot(
+                Request::put("/keys/file/key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_string(&SetSecretRequest {
+                            secret: SecretBytes::from("value"),
+                            mode: Mode::Binary,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+        let shrine = state
+            .shrine_provider
+            .load_from_path("")
+            .unwrap()
+            .open(&ShrinePassword::from(""))
+            .unwrap();
+        let secret = shrine.get("key").unwrap();
+
+        assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes());
     }
 }

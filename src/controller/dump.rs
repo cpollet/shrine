@@ -9,7 +9,10 @@ pub fn dump<P>(
     password: Option<ShrinePassword>,
     pattern: Option<&String>,
     private: bool,
-) -> Result<(), Error> where P: ShrineProvider {
+) -> Result<(), Error>
+where
+    P: ShrineProvider,
+{
     let regex = pattern
         .map(|p| Regex::new(p.as_ref()))
         .transpose()
@@ -26,7 +29,11 @@ pub fn dump<P>(
         .collect::<Vec<String>>();
     keys.sort_unstable();
 
-    println!("Shrine `{}/{}`", shrine_provider.path().display(), SHRINE_FILENAME);
+    println!(
+        "Shrine `{}/{}`",
+        shrine_provider.path().display(),
+        SHRINE_FILENAME
+    );
     println!("Secrets:");
     for key in keys.iter() {
         let secret = shrine.get(key)?;
