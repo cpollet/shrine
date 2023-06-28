@@ -333,22 +333,14 @@ fn exec(cli: Args) -> Result<(), Error> {
         Some(Commands::Import { file, prefix }) => {
             import(shrine_provider, password, file, prefix.as_deref())
         }
-        Some(Commands::Dump { pattern, config }) => dump(
-            shrine_provider,
-            password,
-            pattern.as_ref(),
-            *config,
-        ),
+        Some(Commands::Dump { pattern, config }) => {
+            dump(shrine_provider, password, pattern.as_ref(), *config)
+        }
         Some(Commands::Config { command }) => match command {
-            Some(ConfigCommands::Set { key, value }) => config::set(
-                shrine_provider,
-                password,
-                key,
-                value.as_deref(),
-            ),
-            Some(ConfigCommands::Get { key }) => {
-                config::get(shrine_provider, password, key)
+            Some(ConfigCommands::Set { key, value }) => {
+                config::set(shrine_provider, password, key, value.as_deref())
             }
+            Some(ConfigCommands::Get { key }) => config::get(shrine_provider, password, key),
             _ => panic!(),
         },
         _ => panic!(),

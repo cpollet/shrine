@@ -1,5 +1,5 @@
 use crate::git::Repository;
-use crate::shrine::{ ShrinePassword, ShrineProvider};
+use crate::shrine::{ShrinePassword, ShrineProvider};
 use crate::utils::read_password;
 use crate::Error;
 use rpassword::prompt_password;
@@ -11,7 +11,10 @@ pub fn set<P>(
     password: Option<ShrinePassword>,
     key: &String,
     value: Option<&str>,
-) -> Result<(), Error> where P: ShrineProvider {
+) -> Result<(), Error>
+where
+    P: ShrineProvider,
+{
     let shrine = shrine_provider.load()?;
     let password = password.unwrap_or_else(|| read_password(&shrine));
     let mut shrine = shrine.open(&password)?;
@@ -40,7 +43,10 @@ pub fn get<P>(
     shrine_provider: P,
     password: Option<ShrinePassword>,
     key: &String,
-) -> Result<(), Error> where P : ShrineProvider{
+) -> Result<(), Error>
+where
+    P: ShrineProvider,
+{
     let shrine = shrine_provider.load()?;
     let password = password.unwrap_or_else(|| read_password(&shrine));
     let shrine = shrine.open(&password)?;
