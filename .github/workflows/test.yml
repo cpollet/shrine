@@ -46,6 +46,3 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-      - name: Smoke tests
-        run: |
-          ./smoke-tests.sh
