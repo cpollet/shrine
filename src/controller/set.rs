@@ -38,6 +38,7 @@ where
             .as_bytes()
             .to_vec()
     };
+    let value = value.as_slice();
 
     if client.is_running() {
         client.set_key(path.as_ref().to_str().unwrap(), key, value, input.mode)?;
@@ -46,7 +47,7 @@ where
         let password = password.unwrap_or_else(|| read_password(&shrine));
         let mut shrine = shrine.open(&password)?;
         let repository = Repository::new(&path, &shrine);
-        shrine.set(key.as_ref(), value.as_slice(), input.mode)?;
+        shrine.set(key.as_ref(), value, input.mode)?;
         shrine.close(&password)?.to_path(&path)?;
 
         if let Some(repository) = repository {

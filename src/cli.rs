@@ -1,5 +1,5 @@
 use clap::{command, Parser, Subcommand, ValueEnum};
-use shrine::agent::client::HttpClient;
+use shrine::agent::client::{HttpClient, SocketClient};
 use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
 use shrine::controller::get::get;
@@ -260,7 +260,7 @@ fn exec(cli: Args) -> Result<(), Error> {
     let path = fs::canonicalize(path).unwrap();
 
     #[cfg(unix)]
-    let client = HttpClient::new().unwrap();
+    let client = HttpClient::<SocketClient>::new().unwrap();
     #[cfg(not(unix))]
     let client = NoClient::new();
 
