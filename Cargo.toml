@@ -34,7 +34,7 @@ serde = { version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.104"
 sha2 = "0.10.7"
 thiserror = "1.0.44"
-uuid = "1.4.0"
+uuid = "1.4.1"
 whoami = { version = "1.4.1", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
