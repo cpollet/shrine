@@ -23,9 +23,7 @@ where
     D: Serialize + for<'d> Deserialize<'d>,
 {
     fn default() -> Self {
-        Self {
-            data: PhantomData::default(),
-        }
+        Self { data: PhantomData }
     }
 }
 
