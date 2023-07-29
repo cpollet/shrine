@@ -54,7 +54,7 @@ hyperlocal = "0.8.0"
 nix = "0.26.2"
 
 [dev-dependencies]
-tempfile = "3.6.0"
+tempfile = "3.7.0"
 httpmock = "0.6.8"
 assert_cmd = "2.0.12"
 predicates = "3.0.3"
