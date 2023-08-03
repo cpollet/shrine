@@ -1,6 +1,5 @@
 use crate::agent::client::Client;
-use crate::shrine::{Mode, Secret, ShrinePassword, ShrineProvider};
-use crate::utils::read_password;
+use crate::shrine::{Mode, Secret, ShrineProvider};
 use crate::Error;
 use atty::Stream;
 use base64::Engine;
@@ -8,8 +7,7 @@ use std::io::Write;
 
 pub fn get<C, P, O>(
     client: C,
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
+    mut shrine_provider: P,
     key: &str,
     encoding: Encoding,
     out: &mut O,
@@ -22,9 +20,7 @@ where
     let secret = if client.is_running() {
         encoding.encode(&client.get_key(shrine_provider.path().to_str().unwrap(), key)?)
     } else {
-        let shrine = shrine_provider.load()?;
-        let password = password.unwrap_or_else(|| read_password(&shrine));
-        let shrine = shrine.open(&password)?;
+        let shrine = shrine_provider.load_open()?;
         let secret = shrine.get(key.as_ref())?;
         encoding.encode(secret)
     };
@@ -67,7 +63,7 @@ mod tests {
     use super::*;
     use crate::agent::client::mock::MockClient;
     use crate::shrine::mocks::MockShrineProvider;
-    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
+    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
 
     #[test]
     fn get_direct() {
@@ -78,21 +74,13 @@ mod tests {
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build();
         shrine.set("key", "secret", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
 
         let shrine_provider = MockShrineProvider::new(shrine);
 
         let mut out = Vec::<u8>::new();
 
-        get(
-            client,
-            shrine_provider,
-            None,
-            "key",
-            Encoding::Raw,
-            &mut out,
-        )
-        .expect("expected Ok(())");
+        get(client, shrine_provider, "key", Encoding::Raw, &mut out).expect("expected Ok(())");
 
         assert_eq!(out.as_slice(), "secret".as_bytes());
     }
@@ -122,7 +110,6 @@ mod tests {
         get(
             client,
             MockShrineProvider::default(),
-            None,
             "key",
             Encoding::Raw,
             &mut out,

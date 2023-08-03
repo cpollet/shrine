@@ -251,7 +251,7 @@ where
             Some(p) => p,
         }
     } else {
-        ShrinePassword::from("")
+        ShrinePassword::default()
     };
 
     let shrine = match shrine.open(&shrine_password) {
@@ -477,7 +477,7 @@ mod tests {
                 .shrine
                 .lock()
                 .unwrap()
-                .replace(Shrine::default().close(&ShrinePassword::from("")).unwrap()))
+                .replace(Shrine::default().close(&ShrinePassword::default()).unwrap()))
         }
 
         fn save_to_path<P>(&self, _path: P, shrine: Shrine<Closed>) -> Result<(), Error>
@@ -504,7 +504,7 @@ mod tests {
                 .with_encryption_algorithm(EncryptionAlgorithm::Plain)
                 .build();
             shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::from("")).unwrap()
+            shrine.close(&ShrinePassword::default()).unwrap()
         };
 
         let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
@@ -530,7 +530,7 @@ mod tests {
                 .with_encryption_algorithm(EncryptionAlgorithm::Plain)
                 .build();
             shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::from("")).unwrap()
+            shrine.close(&ShrinePassword::default()).unwrap()
         };
 
         let response = super::get_key(
@@ -551,7 +551,7 @@ mod tests {
                 .with_encryption_algorithm(EncryptionAlgorithm::Aes)
                 .build();
             shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::from("")).unwrap()
+            shrine.close(&ShrinePassword::default()).unwrap()
         };
 
         let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
@@ -603,7 +603,7 @@ mod tests {
                 .build();
             shrine.set("key", "text", Mode::Text).unwrap();
             shrine.set("binkey", "bin", Mode::Binary).unwrap();
-            shrine.close(&ShrinePassword::from("")).unwrap()
+            shrine.close(&ShrinePassword::default()).unwrap()
         };
 
         let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
@@ -635,7 +635,7 @@ mod tests {
                 .with_encryption_algorithm(EncryptionAlgorithm::Plain)
                 .build();
             shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::from("")).unwrap()
+            shrine.close(&ShrinePassword::default()).unwrap()
         };
 
         let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
@@ -668,7 +668,7 @@ mod tests {
                 .with_encryption_algorithm(EncryptionAlgorithm::Plain)
                 .build();
             shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::from("")).unwrap()
+            shrine.close(&ShrinePassword::default()).unwrap()
         };
 
         let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
@@ -683,7 +683,7 @@ mod tests {
     async fn route_get_pid() {
         let (tx, _) = channel::<()>();
         let state = AgentState::new(
-            MockShrineProvider::new(Shrine::default().close(&ShrinePassword::from("")).unwrap()),
+            MockShrineProvider::new(Shrine::default().close(&ShrinePassword::default()).unwrap()),
             tx,
         );
 
@@ -702,7 +702,7 @@ mod tests {
         let shrine = ShrineBuilder::new()
             .with_encryption_algorithm(EncryptionAlgorithm::Aes)
             .build()
-            .close(&ShrinePassword::from(""))
+            .close(&ShrinePassword::default())
             .unwrap();
         let state = AgentState::new(MockShrineProvider::new(shrine), tx);
 
@@ -773,7 +773,7 @@ mod tests {
         let shrine = ShrineBuilder::new()
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build()
-            .close(&ShrinePassword::from(""))
+            .close(&ShrinePassword::default())
             .unwrap();
         let state = AgentState::new(MockShrineProvider::new(shrine), tx);
 
@@ -793,7 +793,7 @@ mod tests {
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build();
         shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
         let state = AgentState::new(MockShrineProvider::new(shrine), tx);
 
         let response = router()
@@ -819,7 +819,7 @@ mod tests {
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build();
         shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
         let state = AgentState::new(MockShrineProvider::new(shrine), tx);
 
         let response = router()
@@ -847,7 +847,7 @@ mod tests {
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build();
         shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
         let state = AgentState::new(MockShrineProvider::new(shrine), tx);
 
         let response = router()
@@ -866,7 +866,7 @@ mod tests {
             .shrine_provider
             .load_from_path("")
             .unwrap()
-            .open(&ShrinePassword::from(""))
+            .open(&ShrinePassword::default())
             .unwrap();
 
         let error = shrine.get("key").err().unwrap();
@@ -879,7 +879,7 @@ mod tests {
         let shrine = ShrineBuilder::new()
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build()
-            .close(&ShrinePassword::from(""))
+            .close(&ShrinePassword::default())
             .unwrap();
         let state = AgentState::new(MockShrineProvider::new(shrine), tx);
 
@@ -906,7 +906,7 @@ mod tests {
             .shrine_provider
             .load_from_path("")
             .unwrap()
-            .open(&ShrinePassword::from(""))
+            .open(&ShrinePassword::default())
             .unwrap();
         let secret = shrine.get("key").unwrap();
 

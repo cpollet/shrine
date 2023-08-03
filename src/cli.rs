@@ -264,7 +264,7 @@ fn exec(cli: Args) -> Result<(), Error> {
     #[cfg(not(unix))]
     let client = NoClient::new();
 
-    let shrine_provider = FilesystemShrineProvider::new(path);
+    let shrine_provider = FilesystemShrineProvider::new(path, password.clone());
 
     match &cli.command {
         #[cfg(unix)]
@@ -292,7 +292,6 @@ fn exec(cli: Args) -> Result<(), Error> {
             encryption,
         }) => convert(
             shrine_provider,
-            password,
             *change_password,
             new_password.as_ref().map(ShrinePassword::from),
             encryption.map(|algo| algo.into()),
@@ -306,7 +305,6 @@ fn exec(cli: Args) -> Result<(), Error> {
         }) => set(
             client,
             shrine_provider,
-            password,
             key,
             set::Input {
                 read_from_stdin: *stdin,
@@ -314,33 +312,25 @@ fn exec(cli: Args) -> Result<(), Error> {
                 value: value.as_deref(),
             },
         ),
-        Some(Commands::Get { key, encoding }) => get(
-            client,
-            shrine_provider,
-            password,
-            key,
-            encoding.into(),
-            &mut stdout(),
-        ),
+        Some(Commands::Get { key, encoding }) => {
+            get(client, shrine_provider, key, encoding.into(), &mut stdout())
+        }
         Some(Commands::Ls { pattern }) => ls(
             client,
             shrine_provider,
-            password,
             pattern.as_ref().map(|p| p.as_str()),
             &mut stdout(),
         ),
-        Some(Commands::Rm { key }) => rm(client, shrine_provider, password, key),
-        Some(Commands::Import { file, prefix }) => {
-            import(shrine_provider, password, file, prefix.as_deref())
-        }
+        Some(Commands::Rm { key }) => rm(client, shrine_provider, key),
+        Some(Commands::Import { file, prefix }) => import(shrine_provider, file, prefix.as_deref()),
         Some(Commands::Dump { pattern, config }) => {
-            dump(shrine_provider, password, pattern.as_ref(), *config)
+            dump(shrine_provider, pattern.as_ref(), *config)
         }
         Some(Commands::Config { command }) => match command {
             Some(ConfigCommands::Set { key, value }) => {
-                config::set(shrine_provider, password, key, value.as_deref())
+                config::set(shrine_provider, key, value.as_deref())
             }
-            Some(ConfigCommands::Get { key }) => config::get(shrine_provider, password, key),
+            Some(ConfigCommands::Get { key }) => config::get(shrine_provider, key),
             _ => panic!(),
         },
         _ => panic!(),

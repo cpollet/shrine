@@ -28,9 +28,11 @@ where
 
     let mut shrine = shrine_builder.build();
 
-    let password = password
-        .map(Ok)
-        .unwrap_or_else(|| read_new_password(&shrine))?;
+    let password = if shrine.requires_password() {
+        password.map(Ok).unwrap_or_else(read_new_password)?
+    } else {
+        ShrinePassword::default()
+    };
 
     if git {
         git::write_configuration(&mut shrine);
@@ -38,7 +40,7 @@ where
 
     let repository = Repository::new(shrine_provider.path(), &shrine);
 
-    shrine_provider.save(shrine.close(&password)?)?;
+    shrine_provider.save_closed(shrine.close(&password)?)?;
 
     print!("Initialized new shrine in `{}`", file.display());
 

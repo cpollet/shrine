@@ -1,12 +1,11 @@
 use crate::git::Repository;
 use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
 use crate::shrine::{ShrinePassword, ShrineProvider};
-use crate::utils::{read_new_password, read_password};
+use crate::utils::read_new_password;
 use crate::Error;
 
 pub fn convert<P>(
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
+    mut shrine_provider: P,
     change_password: bool,
     new_password: Option<ShrinePassword>,
     encryption_algorithm: Option<EncryptionAlgorithm>,
@@ -21,9 +20,7 @@ where
 
     let mut change_password = change_password;
 
-    let shrine = shrine_provider.load()?;
-    let password = password.unwrap_or_else(|| read_password(&shrine));
-    let shrine = shrine.open(&password)?;
+    let shrine = shrine_provider.load_open()?;
 
     let shrine_builder =
         ShrineBuilder::new().with_encryption_algorithm(shrine.encryption_algorithm());
@@ -38,19 +35,20 @@ where
 
     let mut new_shrine = shrine_builder.build();
 
-    let password = if change_password {
-        new_password
-            .map(Ok)
-            .unwrap_or_else(|| read_new_password(&new_shrine))?
-    } else {
-        password
-    };
-
     shrine.move_to(&mut new_shrine);
 
     let repository = Repository::new(shrine_provider.path(), &new_shrine);
 
-    shrine_provider.save(new_shrine.close(&password)?)?;
+    if change_password {
+        let new_password = if new_shrine.requires_password() {
+            new_password.map(Ok).unwrap_or_else(read_new_password)?
+        } else {
+            ShrinePassword::default()
+        };
+        shrine_provider.save_closed(new_shrine.close(&new_password)?)?;
+    } else {
+        shrine_provider.save_open(new_shrine)?;
+    }
 
     if let Some(repository) = repository {
         if repository.commit_auto() {

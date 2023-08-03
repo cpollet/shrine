@@ -1,4 +1,3 @@
-use assert_cmd;
 use predicates::prelude::predicate;
 use std::fs;
 use std::fs::File;

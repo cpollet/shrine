@@ -1,7 +1,7 @@
 use crate::agent::client::Client;
 use crate::git::Repository;
-use crate::shrine::{Mode, ShrinePassword, ShrineProvider};
-use crate::utils::read_password;
+use crate::shrine::{Mode, ShrineProvider};
+
 use crate::Error;
 use rpassword::prompt_password;
 use std::io::Read;
@@ -14,8 +14,7 @@ pub struct Input<'a> {
 
 pub fn set<C, P>(
     client: C,
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
+    mut shrine_provider: P,
     key: &str,
     input: Input<'_>,
 ) -> Result<(), Error>
@@ -47,12 +46,10 @@ where
             input.mode,
         )?;
     } else {
-        let shrine = shrine_provider.load()?;
-        let password = password.unwrap_or_else(|| read_password(&shrine));
-        let mut shrine = shrine.open(&password)?;
+        let mut shrine = shrine_provider.load_open()?;
         let repository = Repository::new(shrine_provider.path(), &shrine);
         shrine.set(key.as_ref(), value, input.mode)?;
-        shrine_provider.save(shrine.close(&password)?)?;
+        shrine_provider.save_open(shrine)?;
 
         if let Some(repository) = repository {
             if repository.commit_auto() {
@@ -71,7 +68,7 @@ mod tests {
     use super::*;
     use crate::agent::client::mock::MockClient;
     use crate::shrine::mocks::MockShrineProvider;
-    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
+    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
 
     #[test]
     fn get_direct() {
@@ -82,14 +79,13 @@ mod tests {
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build();
         shrine.set("key", "secret", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
 
         let shrine_provider = MockShrineProvider::new(shrine);
 
         set(
             client,
             shrine_provider.clone(),
-            None,
             "key",
             Input {
                 read_from_stdin: false,
@@ -100,9 +96,9 @@ mod tests {
         .expect("expected Ok(())");
 
         let shrine = shrine_provider
-            .load()
+            .load_closed()
             .unwrap()
-            .open(&ShrinePassword::from(""))
+            .open(&ShrinePassword::default())
             .unwrap();
         let secret = shrine.get("key").unwrap();
         assert_eq!("value".as_bytes(), secret.value().expose_secret_as_bytes());
@@ -125,7 +121,6 @@ mod tests {
         set(
             client,
             shrine_provider,
-            None,
             "key",
             Input {
                 read_from_stdin: false,

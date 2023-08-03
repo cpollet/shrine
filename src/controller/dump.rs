@@ -1,15 +1,9 @@
-use crate::shrine::{Mode, ShrinePassword, ShrineProvider};
-use crate::utils::read_password;
+use crate::shrine::{Mode, ShrineProvider};
 use crate::{Error, SHRINE_FILENAME};
 use base64::Engine;
 use regex::Regex;
 
-pub fn dump<P>(
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
-    pattern: Option<&String>,
-    private: bool,
-) -> Result<(), Error>
+pub fn dump<P>(mut shrine_provider: P, pattern: Option<&String>, private: bool) -> Result<(), Error>
 where
     P: ShrineProvider,
 {
@@ -18,9 +12,7 @@ where
         .transpose()
         .map_err(Error::InvalidPattern)?;
 
-    let shrine = shrine_provider.load()?;
-    let password = password.unwrap_or_else(|| read_password(&shrine));
-    let shrine = shrine.open(&password)?;
+    let shrine = shrine_provider.load_open()?;
 
     let mut keys = shrine
         .keys()

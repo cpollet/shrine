@@ -12,7 +12,7 @@ pub fn info<P>(shrine_provider: P, field: Option<Fields>) -> Result<(), Error>
 where
     P: ShrineProvider,
 {
-    let shrine = shrine_provider.load()?;
+    let shrine = shrine_provider.load_closed()?;
     match field {
         None => {
             println!(

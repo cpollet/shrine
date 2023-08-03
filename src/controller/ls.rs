@@ -1,14 +1,13 @@
 use crate::agent::client::Client;
-use crate::shrine::{Key, ShrinePassword, ShrineProvider};
-use crate::utils::read_password;
+use crate::shrine::{Key, ShrineProvider};
+
 use crate::Error;
 use regex::Regex;
 use std::io::Write;
 
 pub fn ls<C, P, W>(
     client: C,
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
+    mut shrine_provider: P,
     pattern: Option<&str>,
     out: &mut W,
 ) -> Result<(), Error>
@@ -25,9 +24,7 @@ where
             .transpose()
             .map_err(Error::InvalidPattern)?;
 
-        let shrine = shrine_provider.load()?;
-        let password = password.unwrap_or_else(|| read_password(&shrine));
-        let shrine = shrine.open(&password)?;
+        let shrine = shrine_provider.load_open()?;
 
         let mut keys = shrine
             .keys()
@@ -97,7 +94,7 @@ mod tests {
     use super::*;
     use crate::agent::client::mock::MockClient;
     use crate::shrine::mocks::MockShrineProvider;
-    use crate::shrine::{EncryptionAlgorithm, Mode, ShrineBuilder};
+    use crate::shrine::{EncryptionAlgorithm, Mode, ShrineBuilder, ShrinePassword};
 
     #[test]
     fn ls_direct() {
@@ -108,13 +105,13 @@ mod tests {
             .with_encryption_algorithm(EncryptionAlgorithm::Plain)
             .build();
         shrine.set("pattern", "secret", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("")).unwrap();
+        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
 
         let shrine_provider = MockShrineProvider::new(shrine);
 
         let mut out = Vec::<u8>::new();
 
-        ls(client, shrine_provider, None, Some("pattern"), &mut out).expect("expected Ok(())");
+        ls(client, shrine_provider, Some("pattern"), &mut out).expect("expected Ok(())");
 
         let out = String::from_utf8(out).unwrap();
         assert!(out.contains(&format!(
@@ -146,7 +143,7 @@ mod tests {
 
         let mut out = Vec::<u8>::new();
 
-        ls(client, shrine_provider, None, Some("pattern"), &mut out).expect("expected Ok(())");
+        ls(client, shrine_provider, Some("pattern"), &mut out).expect("expected Ok(())");
 
         assert_eq!(
             String::from_utf8(out).unwrap(),

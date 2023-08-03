@@ -16,6 +16,7 @@ use std::fs::File;
 
 use chrono::{DateTime, Utc};
 
+use crate::utils::read_password;
 use secrecy::{CloneableSecret, ExposeSecret, SerializableSecret, Zeroize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
@@ -34,6 +35,12 @@ impl ShrinePassword {
     }
     pub fn expose_secret_as_bytes(&self) -> &[u8] {
         self.0.expose_secret().0.as_bytes()
+    }
+}
+
+impl Default for ShrinePassword {
+    fn default() -> Self {
+        Self::from("")
     }
 }
 
@@ -671,30 +678,52 @@ impl From<(String, &Secret)> for Key {
 }
 
 pub trait ShrineProvider {
-    fn load(&self) -> Result<Shrine<Closed>, Error>;
+    fn load_closed(&self) -> Result<Shrine<Closed>, Error>;
 
-    fn save(&self, shrine: Shrine<Closed>) -> Result<(), Error>;
+    fn load_open(&mut self) -> Result<Shrine<Open>, Error>;
+
+    fn save_closed(&self, shrine: Shrine<Closed>) -> Result<(), Error>;
+
+    fn save_open(&self, shrine: Shrine) -> Result<(), Error>;
 
     fn path(&self) -> &Path;
 }
 
 pub struct FilesystemShrineProvider {
     path: PathBuf,
+    password: Option<ShrinePassword>,
 }
 
 impl FilesystemShrineProvider {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(path: PathBuf, password: Option<ShrinePassword>) -> Self {
+        Self { path, password }
     }
 }
 
 impl ShrineProvider for FilesystemShrineProvider {
-    fn load(&self) -> Result<Shrine<Closed>, Error> {
+    fn load_closed(&self) -> Result<Shrine<Closed>, Error> {
         Shrine::from_path(&self.path)
     }
 
-    fn save(&self, shrine: Shrine<Closed>) -> Result<(), Error> {
+    fn load_open(&mut self) -> Result<Shrine<Open>, Error> {
+        let shrine = self.load_closed()?;
+
+        if shrine.requires_password() {
+            if self.password.is_none() {
+                self.password = Some(read_password(shrine.uuid()));
+            }
+            shrine.open(self.password.as_ref().expect("we have a password"))
+        } else {
+            shrine.open(&ShrinePassword::default())
+        }
+    }
+
+    fn save_closed(&self, shrine: Shrine<Closed>) -> Result<(), Error> {
         shrine.to_path(&self.path)
+    }
+
+    fn save_open(&self, shrine: Shrine) -> Result<(), Error> {
+        self.save_closed(shrine.close(self.password.as_ref().expect("we must have the password"))?)
     }
 
     fn path(&self) -> &Path {
@@ -728,22 +757,35 @@ pub mod mocks {
                 ShrineBuilder::new()
                     .with_encryption_algorithm(EncryptionAlgorithm::Plain)
                     .build()
-                    .close(&ShrinePassword::from(""))
+                    .close(&ShrinePassword::default())
                     .unwrap(),
             )
         }
     }
 
     impl ShrineProvider for MockShrineProvider {
-        fn load(&self) -> Result<Shrine<Closed>, Error> {
+        fn load_closed(&self) -> Result<Shrine<Closed>, Error> {
             Ok(self
                 .shrine
-                .replace(Shrine::default().close(&ShrinePassword::from("")).unwrap()))
+                .replace(Shrine::default().close(&ShrinePassword::default()).unwrap()))
         }
 
-        fn save(&self, shrine: Shrine<Closed>) -> Result<(), Error> {
+        fn load_open(&mut self) -> Result<Shrine<Open>, Error> {
+            let password = ShrinePassword::default();
+            Ok(self
+                .shrine
+                .replace(Shrine::default().close(&password).unwrap())
+                .open(&password)
+                .unwrap())
+        }
+
+        fn save_closed(&self, shrine: Shrine<Closed>) -> Result<(), Error> {
             self.shrine.replace(shrine);
             Ok(())
+        }
+
+        fn save_open(&self, shrine: Shrine) -> Result<(), Error> {
+            self.save_closed(shrine.close(&ShrinePassword::default()).unwrap())
         }
 
         fn path(&self) -> &Path {

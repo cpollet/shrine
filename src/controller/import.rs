@@ -1,5 +1,5 @@
-use crate::shrine::{Mode, ShrinePassword, ShrineProvider};
-use crate::utils::read_password;
+use crate::shrine::{Mode, ShrineProvider};
+
 use crate::Error;
 use dotenv_parser::parse_dotenv;
 
@@ -10,18 +10,19 @@ use std::path::{Path, PathBuf};
 // https://crates.io/crates/dotenv-parser
 // todo compliant with https://hexdocs.pm/dotenvy/dotenv-file-format.html
 
-pub fn import<P>(
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
-    file: &PathBuf,
-    prefix: Option<&str>,
-) -> Result<(), Error>
+pub fn import<P>(mut shrine_provider: P, file: &PathBuf, prefix: Option<&str>) -> Result<(), Error>
 where
     P: ShrineProvider,
 {
-    let shrine = shrine_provider.load()?;
-    let password = password.unwrap_or_else(|| read_password(&shrine));
-    let mut shrine = shrine.open(&password)?;
+    let mut shrine = shrine_provider.load_open()?;
+    // let password = password.unwrap_or_else(|| {
+    //     if shrine.requires_password() {
+    //         read_password(shrine.uuid())
+    //     } else {
+    //         ShrinePassword::default()
+    //     }
+    // });
+    // let mut shrine = shrine.open(&password)?;
 
     let prefix = prefix.unwrap_or_default();
 
@@ -39,5 +40,5 @@ where
         shrine.set(&format!("{}{}", prefix, key), value.as_bytes(), Mode::Text)?
     }
 
-    shrine_provider.save(shrine.close(&password)?)
+    shrine_provider.save_open(shrine)
 }
