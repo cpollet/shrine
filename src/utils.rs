@@ -64,7 +64,6 @@ pub fn read_password(uuid: Uuid) -> ShrinePassword {
                             "Could not read password from `{}`: invalid format",
                             password_file.display(),
                         );
-                        return read_password_from_tty();
                     }
                 }
             } else {
@@ -72,7 +71,6 @@ pub fn read_password(uuid: Uuid) -> ShrinePassword {
                     "Could not read password from `{}`: invalid format",
                     password_file.display(),
                 );
-                return read_password_from_tty();
             }
         }
     }

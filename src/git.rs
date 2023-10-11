@@ -30,9 +30,9 @@ impl Configuration {
     }
 
     fn write(&self, shrine: &mut Shrine<shrine::Open>) {
-        shrine.set_private("git.enabled", self.enabled.to_string());
-        shrine.set_private("git.commit.auto", self.commit_auto.to_string());
-        shrine.set_private("git.push.auto", self.push_auto.to_string());
+        shrine.set_private("git.enabled".to_string(), self.enabled.to_string());
+        shrine.set_private("git.commit.auto".to_string(), self.commit_auto.to_string());
+        shrine.set_private("git.push.auto".to_string(), self.push_auto.to_string());
     }
 }
 

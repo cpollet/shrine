@@ -44,7 +44,7 @@ where
             .keys_private()
             .into_iter()
             .filter(|k| regex.as_ref().map(|r| r.is_match(k)).unwrap_or(true))
-            .collect::<Vec<String>>();
+            .collect::<Vec<&str>>();
         keys.sort_unstable();
 
         println!("Configuration:");

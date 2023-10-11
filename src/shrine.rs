@@ -376,29 +376,19 @@ impl Shrine<Open> {
         serde_json::to_string(&self.payload.0).unwrap_or_default()
     }
 
-    pub fn set_private<K, V>(&mut self, key: K, value: V)
-    where
-        K: Into<String>,
-        V: Into<String>,
-    {
-        self.payload.0.set_private(key.into(), value.into());
+    pub fn set_private(&mut self, key: String, value: String) {
+        self.payload.0.set_private(key, value);
     }
 
-    pub fn get_private<'k, K>(&self, key: K) -> Option<&String>
-    where
-        K: Into<&'k str>,
-    {
-        self.payload.0.get_private(key.into())
+    pub fn get_private(&self, key: &str) -> Option<&str> {
+        self.payload.0.get_private(key)
     }
 
-    pub fn remove_private<'k, K>(&mut self, key: K)
-    where
-        K: Into<&'k str>,
-    {
-        self.payload.0.remove_private(key.into());
+    pub fn remove_private(&mut self, key: &str) {
+        self.payload.0.remove_private(key);
     }
 
-    pub fn keys_private(&self) -> Vec<String> {
+    pub fn keys_private(&self) -> Vec<&str> {
         self.payload.0.keys_private()
     }
 }

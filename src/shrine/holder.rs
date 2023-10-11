@@ -71,37 +71,27 @@ impl<T> Holder<T> {
     }
 
     /// Sets a private value.
-    pub fn set_private<K, V>(&mut self, key: K, value: V)
-    where
-        K: Into<String>,
-        V: Into<String>,
-    {
-        self.private.insert(key.into(), value.into());
+    pub fn set_private(&mut self, key: String, value: String) {
+        self.private.insert(key, value);
     }
 
     /// Gets a private value.
-    pub fn get_private<'k, K>(&self, key: K) -> Option<&String>
-    where
-        K: Into<&'k str>,
-    {
-        self.private.get(key.into())
+    pub fn get_private(&self, key: &str) -> Option<&str> {
+        self.private.get(key).map(|v| v.as_str())
     }
 
     /// Removes a private value.
-    pub fn remove_private<'k, K>(&mut self, key: K)
-    where
-        K: Into<&'k str>,
-    {
-        self.private.remove(key.into());
+    pub fn remove_private(&mut self, key: &str) {
+        self.private.remove(key);
     }
 
     /// Returns all the private keys, sorted in alphabetical order.
-    pub fn keys_private(&self) -> Vec<String> {
+    pub fn keys_private(&self) -> Vec<&str> {
         let mut keys = self
             .private
             .keys()
-            .map(|k| k.to_string())
-            .collect::<Vec<String>>();
+            .map(|k| k.as_str())
+            .collect::<Vec<&str>>();
         keys.sort_unstable();
         keys
     }

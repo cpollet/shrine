@@ -21,7 +21,7 @@ where
         encoding.encode(&client.get_key(shrine_provider.path().to_str().unwrap(), key)?)
     } else {
         let shrine = shrine_provider.load_open()?;
-        let secret = shrine.get(key.as_ref())?;
+        let secret = shrine.get(key)?;
         encoding.encode(secret)
     };
 

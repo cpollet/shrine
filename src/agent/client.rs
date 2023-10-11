@@ -1,7 +1,7 @@
 use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 use crate::bytes::SecretBytes;
 use crate::shrine::{Key, Mode, Secret};
-use crate::utils::read_password_from_tty;
+use crate::utils::read_password;
 use crate::Error;
 use async_recursion::async_recursion;
 use hyper::body::HttpBody;
@@ -209,7 +209,7 @@ where
                     "/passwords",
                     &SetPasswordRequest {
                         uuid,
-                        password: read_password_from_tty(),
+                        password: read_password(uuid),
                     },
                 )
                 .await?;

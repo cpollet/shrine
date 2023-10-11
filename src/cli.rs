@@ -213,8 +213,8 @@ enum Encoding {
     Base64,
 }
 
-impl From<&Encoding> for get::Encoding {
-    fn from(value: &Encoding) -> Self {
+impl From<Encoding> for get::Encoding {
+    fn from(value: Encoding) -> Self {
         match value {
             Encoding::Auto => get::Encoding::Auto,
             Encoding::Raw => get::Encoding::Raw,
@@ -266,7 +266,7 @@ fn exec(cli: Args) -> Result<(), Error> {
 
     let shrine_provider = FilesystemShrineProvider::new(path, password.clone());
 
-    match &cli.command {
+    match cli.command {
         #[cfg(unix)]
         Some(Commands::Agent { command }) => match command {
             Some(AgentCommands::Start) => agent::start(client),
@@ -282,9 +282,9 @@ fn exec(cli: Args) -> Result<(), Error> {
         }) => init(
             shrine_provider,
             password,
-            *force,
+            force,
             encryption.map(|algo| algo.into()),
-            *git,
+            git,
         ),
         Some(Commands::Convert {
             change_password,
@@ -292,11 +292,11 @@ fn exec(cli: Args) -> Result<(), Error> {
             encryption,
         }) => convert(
             shrine_provider,
-            *change_password,
+            change_password,
             new_password.as_ref().map(ShrinePassword::from),
             encryption.map(|algo| algo.into()),
         ),
-        Some(Commands::Info { field }) => info(shrine_provider, (*field).map(Fields::from)),
+        Some(Commands::Info { field }) => info(shrine_provider, field.map(Fields::from)),
         Some(Commands::Set {
             key,
             stdin,
@@ -305,32 +305,34 @@ fn exec(cli: Args) -> Result<(), Error> {
         }) => set(
             client,
             shrine_provider,
-            key,
+            &key,
             set::Input {
-                read_from_stdin: *stdin,
-                mode: mode.to_mode(*stdin),
+                read_from_stdin: stdin,
+                mode: mode.to_mode(stdin),
                 value: value.as_deref(),
             },
         ),
-        Some(Commands::Get { key, encoding }) => {
-            get(client, shrine_provider, key, encoding.into(), &mut stdout())
-        }
+        Some(Commands::Get { key, encoding }) => get(
+            client,
+            shrine_provider,
+            &key,
+            encoding.into(),
+            &mut stdout(),
+        ),
         Some(Commands::Ls { pattern }) => ls(
             client,
             shrine_provider,
             pattern.as_ref().map(|p| p.as_str()),
             &mut stdout(),
         ),
-        Some(Commands::Rm { key }) => rm(client, shrine_provider, key),
-        Some(Commands::Import { file, prefix }) => import(shrine_provider, file, prefix.as_deref()),
-        Some(Commands::Dump { pattern, config }) => {
-            dump(shrine_provider, pattern.as_ref(), *config)
+        Some(Commands::Rm { key }) => rm(client, shrine_provider, &key),
+        Some(Commands::Import { file, prefix }) => {
+            import(shrine_provider, &file, prefix.as_deref())
         }
+        Some(Commands::Dump { pattern, config }) => dump(shrine_provider, pattern.as_ref(), config),
         Some(Commands::Config { command }) => match command {
-            Some(ConfigCommands::Set { key, value }) => {
-                config::set(shrine_provider, key, value.as_deref())
-            }
-            Some(ConfigCommands::Get { key }) => config::get(shrine_provider, key),
+            Some(ConfigCommands::Set { key, value }) => config::set(shrine_provider, key, value),
+            Some(ConfigCommands::Get { key }) => config::get(shrine_provider, &key),
             _ => panic!(),
         },
         _ => panic!(),

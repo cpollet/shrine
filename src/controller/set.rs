@@ -48,7 +48,7 @@ where
     } else {
         let mut shrine = shrine_provider.load_open()?;
         let repository = Repository::new(shrine_provider.path(), &shrine);
-        shrine.set(key.as_ref(), value, input.mode)?;
+        shrine.set(key, value, input.mode)?;
         shrine_provider.save_open(shrine)?;
 
         if let Some(repository) = repository {
