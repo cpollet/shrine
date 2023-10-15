@@ -1,7 +1,8 @@
 use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
-use crate::bytes::SecretBytes;
-use crate::shrine::{Key, Mode, Secret};
 use crate::utils::read_password;
+use crate::values::bytes::SecretBytes;
+use crate::values::key::Key;
+use crate::values::secret::{Mode, Secret};
 use crate::Error;
 use async_recursion::async_recursion;
 use hyper::body::HttpBody;
@@ -14,7 +15,7 @@ use std::env;
 use std::path::PathBuf;
 use tokio::runtime::Runtime;
 
-pub trait Client {
+pub trait Client: Send + Sync {
     fn is_running(&self) -> bool;
 
     fn pid(&self) -> Option<u32>;
@@ -225,7 +226,7 @@ where
 #[cfg(unix)]
 impl<C> Client for HttpClient<C>
 where
-    C: ClientConnector,
+    C: ClientConnector + Send + Sync,
 {
     fn is_running(&self) -> bool {
         self.rt.block_on(self.get::<u32>("/pid")).is_ok()
@@ -359,23 +360,27 @@ pub mod mock {
     use super::*;
     use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
 
     #[derive(Default)]
     pub struct MockClient {
-        is_running: bool,
-        get_keys: RefCell<HashMap<(String, String), Result<Secret, Error>>>,
-        set_keys: RefCell<HashMap<(String, String, Vec<u8>, Mode), Result<(), Error>>>,
-        delete_key: RefCell<HashMap<(String, String), Result<Vec<Secret>, Error>>>,
-        ls: RefCell<HashMap<(String, Option<String>), Result<Vec<Key>, Error>>>,
+        is_running: Arc<AtomicBool>,
+        get_keys: Arc<Mutex<RefCell<HashMap<(String, String), Result<Secret, Error>>>>>,
+        set_keys: Arc<Mutex<RefCell<HashMap<(String, String, Vec<u8>, Mode), Result<(), Error>>>>>,
+        delete_key: Arc<Mutex<RefCell<HashMap<(String, String), Result<Vec<Secret>, Error>>>>>,
+        ls: Arc<Mutex<RefCell<HashMap<(String, Option<String>), Result<Vec<Key>, Error>>>>>,
     }
 
     impl MockClient {
         pub fn with_is_running(&mut self, is_running: bool) {
-            self.is_running = is_running;
+            self.is_running.store(is_running, Ordering::SeqCst)
         }
 
         pub fn with_get_key(&self, path: &str, key: &str, result: Result<Secret, Error>) {
             self.get_keys
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .insert((path.to_string(), key.to_string()), result);
         }
@@ -388,7 +393,7 @@ pub mod mock {
             mode: &Mode,
             result: Result<(), Error>,
         ) {
-            self.set_keys.borrow_mut().insert(
+            self.set_keys.lock().unwrap().borrow_mut().insert(
                 (
                     path.to_string(),
                     key.to_string(),
@@ -401,12 +406,16 @@ pub mod mock {
 
         pub fn with_delete_key(&self, path: &str, key: &str, result: Result<Vec<Secret>, Error>) {
             self.delete_key
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .insert((path.to_string(), key.to_string()), result);
         }
 
         pub fn with_ls(&self, path: &str, regexp: Option<&str>, result: Result<Vec<Key>, Error>) {
             self.ls
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .insert((path.to_string(), regexp.map(|r| r.to_string())), result);
         }
@@ -414,7 +423,7 @@ pub mod mock {
 
     impl Client for MockClient {
         fn is_running(&self) -> bool {
-            self.is_running
+            self.is_running.load(Ordering::SeqCst)
         }
 
         fn pid(&self) -> Option<u32> {
@@ -427,6 +436,8 @@ pub mod mock {
 
         fn get_key(&self, path: &str, key: &str) -> Result<Secret, Error> {
             self.get_keys
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .remove(&(path.to_string(), key.to_string()))
                 .expect(&format!("unexpected get_key(\"{}\", \"{}\")", path, key))
@@ -434,6 +445,8 @@ pub mod mock {
 
         fn set_key(&self, path: &str, key: &str, value: &[u8], mode: Mode) -> Result<(), Error> {
             self.set_keys
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .remove(&(path.to_string(), key.to_string(), value.to_vec(), mode))
                 .expect(&format!(
@@ -444,6 +457,8 @@ pub mod mock {
 
         fn delete_key(&self, path: &str, key: &str) -> Result<Vec<Secret>, Error> {
             self.delete_key
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .remove(&(path.to_string(), key.to_string()))
                 .expect(&format!("unexpected delete_key(\"{}\", \"{}\")", path, key))
@@ -451,6 +466,8 @@ pub mod mock {
 
         fn ls(&self, path: &str, regexp: Option<&str>) -> Result<Vec<Key>, Error> {
             self.ls
+                .lock()
+                .unwrap()
                 .borrow_mut()
                 .remove(&(path.to_string(), regexp.map(|r| r.to_string())))
                 .expect(&format!("unexpected ls(\"{}\", \"{:?}\")", path, regexp))
@@ -492,7 +509,7 @@ mod tests {
             then.status(200).body(
                 r#"
                 {
-                    "value": [115,101,99,114,101,116],
+                    "value": "c2VjcmV0",
                     "mode": "Text",
                     "created_by": "cpollet@localhost",
                     "created_at": "2023-06-20T17:51:11.786655084Z"
@@ -543,7 +560,7 @@ mod tests {
             then.status(200).body(
                 r#"
                 [{
-                    "value": [115,101,99,114,101,116],
+                    "value": "c2VjcmV0",
                     "mode": "Text",
                     "created_by": "cpollet@localhost",
                     "created_at": "2023-06-20T17:51:11.786655084Z"

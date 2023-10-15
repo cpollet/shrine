@@ -1,9 +1,10 @@
-use crate::bytes::SecretBytes;
-use crate::shrine::{Mode, ShrinePassword};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 
+use crate::values::bytes::SecretBytes;
+use crate::values::password::ShrinePassword;
+use crate::values::secret::Mode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

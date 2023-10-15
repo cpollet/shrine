@@ -1,8 +1,9 @@
-use crate::shrine::Shrine;
-use crate::{shrine, Error, SHRINE_FILENAME};
+use crate::shrine::QueryOpen;
+use crate::values::secret::Mode;
+use crate::Error;
 use chrono::Local;
 use git2::{Commit, ErrorClass, ErrorCode, ObjectType, RepositoryInitOptions, Signature, Time};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 struct Configuration {
@@ -12,27 +13,57 @@ struct Configuration {
 }
 
 impl Configuration {
-    fn read(shrine: &Shrine<shrine::Open>) -> Configuration {
+    fn read<S>(shrine: &S) -> Configuration
+    where
+        S: QueryOpen,
+    {
         Self {
             enabled: shrine
-                .get_private("git.enabled")
-                .map(|s| bool::from_str(s).unwrap_or_default())
+                .get(".git.enabled")
+                .map(|s| s.value().expose_secret_as_bytes())
+                .map(|s| String::from_utf8(Vec::from(s)).unwrap())
+                .map(|s| bool::from_str(&s).unwrap_or_default())
                 .unwrap_or_default(),
             commit_auto: shrine
-                .get_private("git.commit.auto")
-                .map(|s| bool::from_str(s).unwrap_or_default())
+                .get(".git.commit.auto")
+                .map(|s| s.value().expose_secret_as_bytes())
+                .map(|s| String::from_utf8(Vec::from(s)).unwrap())
+                .map(|s| bool::from_str(&s).unwrap_or_default())
                 .unwrap_or_default(),
             push_auto: shrine
-                .get_private("git.push.auto")
-                .map(|s| bool::from_str(s).unwrap_or_default())
+                .get(".git.push.auto")
+                .map(|s| s.value().expose_secret_as_bytes())
+                .map(|s| String::from_utf8(Vec::from(s)).unwrap())
+                .map(|s| bool::from_str(&s).unwrap_or_default())
                 .unwrap_or_default(),
         }
     }
 
-    fn write(&self, shrine: &mut Shrine<shrine::Open>) {
-        shrine.set_private("git.enabled".to_string(), self.enabled.to_string());
-        shrine.set_private("git.commit.auto".to_string(), self.commit_auto.to_string());
-        shrine.set_private("git.push.auto".to_string(), self.push_auto.to_string());
+    fn write<S>(&self, shrine: &mut S)
+    where
+        S: QueryOpen,
+    {
+        shrine
+            .set(
+                ".git.enabled",
+                self.enabled.to_string().as_bytes(),
+                Mode::Text,
+            )
+            .expect("Could not write .git.enabled");
+        shrine
+            .set(
+                ".git.commit.auto",
+                self.commit_auto.to_string().as_bytes(),
+                Mode::Text,
+            )
+            .expect("Could not write .git.commit.auto");
+        shrine
+            .set(
+                ".git.push.auto",
+                self.push_auto.to_string().as_bytes(),
+                Mode::Text,
+            )
+            .expect("Could not write .git.push.auto");
     }
 }
 
@@ -46,11 +77,8 @@ impl Default for Configuration {
     }
 }
 
-pub struct Repository<P, State = Closed>
-where
-    P: AsRef<Path>,
-{
-    path: P,
+pub struct Repository<State = Closed> {
+    path: PathBuf,
     configuration: Configuration,
     state: State,
 }
@@ -61,18 +89,19 @@ pub struct Open {
     repository: git2::Repository,
 }
 
-impl<P> Repository<P>
-where
-    P: AsRef<Path>,
-{
-    pub fn new(path: P, shrine: &Shrine<shrine::Open>) -> Option<Self>
+impl Repository {
+    pub fn new<P, S>(path: P, shrine: &S) -> Option<Self>
     where
-        P: AsRef<Path>,
+        P: Into<PathBuf>,
+        S: QueryOpen,
     {
-        if let Some(enabled) = shrine.get_private("git.enabled") {
+        if let Ok(enabled) = shrine
+            .get(".git.enabled")
+            .map(|s| String::from_utf8(Vec::from(s.value().expose_secret_as_bytes())).unwrap())
+        {
             if enabled == "true" {
                 return Some(Repository {
-                    path,
+                    path: path.into(),
                     configuration: Configuration::read(shrine),
                     state: Closed,
                 });
@@ -83,10 +112,7 @@ where
     }
 }
 
-impl<P, State> Repository<P, State>
-where
-    P: AsRef<Path>,
-{
+impl<State> Repository<State> {
     fn signature<'a>() -> Result<Signature<'a>, Error> {
         let now = Local::now();
         let username = whoami::username();
@@ -105,15 +131,9 @@ where
     }
 }
 
-impl<P> Repository<P, Closed>
-where
-    P: AsRef<Path>,
-{
-    pub fn open(self) -> Result<Repository<P, Open>, Error>
-    where
-        P: AsRef<Path>,
-    {
-        let mut git_folder = self.path.as_ref().to_path_buf();
+impl Repository<Closed> {
+    pub fn open(self) -> Result<Repository<Open>, Error> {
+        let mut git_folder = self.path.clone();
         git_folder.push(".git");
 
         let repository = if git_folder.exists() {
@@ -136,13 +156,11 @@ where
     }
 }
 
-impl<P> Repository<P, Open>
-where
-    P: AsRef<Path>,
-{
+impl Repository<Open> {
     pub fn create_commit(&self, message: &str) -> Result<String, Error> {
         let mut index = self.state.repository.index()?;
-        index.add_path(Path::new(SHRINE_FILENAME))?;
+        // todo shrine filename
+        index.add_path(Path::new("shrine"))?;
 
         index.write()?;
         let oid = index.write_tree()?;
@@ -187,6 +205,9 @@ where
     }
 }
 
-pub fn write_configuration(shrine: &mut Shrine<shrine::Open>) {
+pub fn write_configuration<S>(shrine: &mut S)
+where
+    S: QueryOpen,
+{
     Configuration::default().write(shrine);
 }

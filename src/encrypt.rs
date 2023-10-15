@@ -1,5 +1,4 @@
 use crate::Error;
-
 pub mod aes;
 pub mod plain;
 

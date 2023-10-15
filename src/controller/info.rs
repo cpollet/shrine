@@ -1,5 +1,6 @@
-use crate::shrine::ShrineProvider;
-use crate::{Error, SHRINE_FILENAME};
+use crate::shrine::{ClosedShrine, QueryClosed};
+use crate::Error;
+use std::path::Path;
 
 pub enum Fields {
     Version,
@@ -8,18 +9,13 @@ pub enum Fields {
     Encryption,
 }
 
-pub fn info<P>(shrine_provider: P, field: Option<Fields>) -> Result<(), Error>
+pub fn info<P>(shrine: &ClosedShrine, field: Option<Fields>, path: P) -> Result<(), Error>
 where
-    P: ShrineProvider,
+    P: AsRef<Path>,
 {
-    let shrine = shrine_provider.load_closed()?;
     match field {
         None => {
-            println!(
-                "File:          {}/{}",
-                shrine_provider.path().display(),
-                SHRINE_FILENAME
-            );
+            println!("File:          {}", path.as_ref().display());
             println!("Version:       {}", shrine.version());
             println!("UUID:          {}", shrine.uuid());
             println!("Serialization: {}", shrine.serialization_format());

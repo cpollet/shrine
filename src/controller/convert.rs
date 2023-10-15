@@ -1,62 +1,46 @@
-use crate::git::Repository;
-use crate::shrine::{EncryptionAlgorithm, ShrineBuilder};
-use crate::shrine::{ShrinePassword, ShrineProvider};
-use crate::utils::read_new_password;
+use crate::shrine::encryption::EncryptionAlgorithm;
+use crate::shrine::local::LocalShrine;
+use crate::shrine::{OpenShrine, QueryClosed, QueryOpen};
+use crate::utils::read_password;
+use crate::values::password::ShrinePassword;
 use crate::Error;
+use std::path::Path;
 
 pub fn convert<P>(
-    mut shrine_provider: P,
+    shrine: OpenShrine,
     change_password: bool,
     new_password: Option<ShrinePassword>,
-    encryption_algorithm: Option<EncryptionAlgorithm>,
+    encryption: Option<EncryptionAlgorithm>,
+    path: P,
 ) -> Result<(), Error>
 where
-    P: ShrineProvider,
+    P: AsRef<Path>,
 {
     let change_password = change_password || new_password.is_some();
-    if !change_password && encryption_algorithm.is_none() {
+    if !change_password && encryption.is_none() {
         return Ok(());
     }
 
-    let mut change_password = change_password;
+    let new_shrine = LocalShrine::new();
+    let mut new_shrine = match encryption {
+        Some(EncryptionAlgorithm::Plain) => OpenShrine::LocalClear(new_shrine.into_clear()),
+        _ => {
+            let uuid = new_shrine.uuid();
 
-    let shrine = shrine_provider.load_open()?;
+            let password = match &new_password {
+                None => read_password(uuid).expose_secret().to_string(),
+                Some(password) => password.expose_secret().to_string(),
+            };
 
-    let shrine_builder =
-        ShrineBuilder::new().with_encryption_algorithm(shrine.encryption_algorithm());
-
-    let shrine_builder = match encryption_algorithm {
-        Some(a) if shrine.encryption_algorithm() != a => {
-            change_password = true;
-            shrine_builder.with_encryption_algorithm(a)
+            OpenShrine::LocalAes(new_shrine.set_password(password))
         }
-        _ => shrine_builder,
     };
 
-    let mut new_shrine = shrine_builder.build();
+    shrine.mv(&mut new_shrine);
 
-    shrine.move_to(&mut new_shrine);
+    new_shrine.close()?.write_file(&path)?;
 
-    let repository = Repository::new(shrine_provider.path(), &new_shrine);
-
-    if change_password {
-        let new_password = if new_shrine.requires_password() {
-            new_password.map(Ok).unwrap_or_else(read_new_password)?
-        } else {
-            ShrinePassword::default()
-        };
-        shrine_provider.save_closed(new_shrine.close(&new_password)?)?;
-    } else {
-        shrine_provider.save_open(new_shrine)?;
-    }
-
-    if let Some(repository) = repository {
-        if repository.commit_auto() {
-            repository
-                .open()
-                .and_then(|r| r.create_commit("Update shrine"))?;
-        }
-    }
+    // todo git
 
     Ok(())
 }

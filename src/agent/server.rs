@@ -1,8 +1,11 @@
 use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 
-use crate::git::Repository;
-use crate::shrine::{Closed, Key, Secret, Shrine, ShrinePassword};
-use crate::{Error, SHRINE_FILENAME};
+use crate::shrine::local::LoadedShrine;
+use crate::shrine::{ClosedShrine, OpenShrine, QueryClosed, QueryOpen};
+use crate::values::key::Key;
+use crate::values::password::ShrinePassword;
+use crate::values::secret::Secret;
+use crate::Error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -14,8 +17,6 @@ use hyperlocal::UnixServerExt;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::remove_file;
-use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{mem, process};
@@ -166,10 +167,7 @@ async fn get_keys<P>(
 where
     P: ShrineProvider,
 {
-    info!(
-        "get_keys from file `{}/{}` ({:?})",
-        path, SHRINE_FILENAME, params
-    );
+    info!("get_keys from file `{}` ({:?})", path, params);
 
     let regex = match params
         .regexp
@@ -183,7 +181,7 @@ where
     };
 
     let shrine = match open_shrine::<P>(&state, &path) {
-        Ok((shrine, _)) => shrine,
+        Ok(shrine) => shrine,
         Err(response) => return response,
     };
 
@@ -214,27 +212,28 @@ async fn get_key<P>(
 where
     P: ShrineProvider,
 {
-    info!("get_key `{}` from file `{}/{}`", key, path, SHRINE_FILENAME);
+    info!("get_key `{}` from file `{}`", key, path);
 
     let shrine = match open_shrine::<P>(&state, &path) {
-        Ok((shrine, _)) => shrine,
+        Ok(shrine) => shrine,
         Err(response) => return response,
     };
 
     match shrine.get(&key) {
-        Err(_) => ErrorResponse::KeyNotFound { file: path, key }.into(),
+        Err(_) => ErrorResponse::KeyNotFound {
+            file: path.clone(),
+            key,
+        }
+        .into(),
         Ok(secret) => Json(secret).into_response(),
     }
 }
 
-fn open_shrine<P>(state: &AgentState<P>, path: &str) -> Result<(Shrine, ShrinePassword), Response>
+fn open_shrine<P>(state: &AgentState<P>, path: &str) -> Result<OpenShrine, Response>
 where
     P: ShrineProvider,
 {
-    let shrine = match state
-        .shrine_provider
-        .load_from_path(PathBuf::from_str(path).unwrap())
-    {
+    let shrine = match state.shrine_provider.load_from_path(path) {
         Err(Error::FileNotFound(_)) => {
             return Err(ErrorResponse::FileNotFound(path.to_string()).into())
         }
@@ -245,21 +244,25 @@ where
 
     let uuid = shrine.uuid();
 
-    let shrine_password = if shrine.requires_password() {
-        match state.get_password(uuid) {
-            None => return Err(ErrorResponse::Unauthorized(uuid).into()),
-            Some(p) => p,
+    let shrine = match shrine {
+        ClosedShrine::LocalClear(s) => OpenShrine::LocalClear(
+            s.open()
+                .map_err(|_| ErrorResponse::Read(path.to_string()))?,
+        ),
+        ClosedShrine::LocalAes(s) => {
+            let password = match state.get_password(uuid) {
+                None => return Err(ErrorResponse::Unauthorized(uuid).into()),
+                Some(p) => p,
+            };
+            OpenShrine::LocalAes(
+                s.open(password.expose_secret().to_string())
+                    .map_err(|_| ErrorResponse::Forbidden(uuid))?,
+            )
         }
-    } else {
-        ShrinePassword::default()
+        ClosedShrine::Remote(_) => unreachable!("Agent cannot access remote shrines"),
     };
 
-    let shrine = match shrine.open(&shrine_password) {
-        Err(_) => return Err(ErrorResponse::Forbidden(uuid).into()),
-        Ok(shrine) => shrine,
-    };
-
-    Ok((shrine, shrine_password))
+    Ok(shrine)
 }
 
 async fn put_key<P>(
@@ -270,16 +273,17 @@ async fn put_key<P>(
 where
     P: ShrineProvider,
 {
-    info!("set_key `{}` on file `{}/{}`", key, path, SHRINE_FILENAME);
+    info!("set_key `{}` on file `{}`", key, path);
 
-    let (mut shrine, shrine_password) = match open_shrine::<P>(&state, &path) {
-        Ok(v) => v,
+    let mut shrine = match open_shrine::<P>(&state, &path) {
+        Ok(s) => s,
         Err(response) => return response,
     };
 
-    let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
+    // todo repository
+    // let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
 
-    match shrine.set(&key, request.secret, request.mode) {
+    match shrine.set(&key, request.secret.expose_secret_as_bytes(), request.mode) {
         Ok(_) => {}
         Err(Error::KeyNotFound(key)) => {
             return ErrorResponse::KeyNotFound { file: path, key }.into()
@@ -287,7 +291,7 @@ where
         Err(_) => return ErrorResponse::Write(path).into(),
     }
 
-    let shrine = match shrine.close(&shrine_password) {
+    let shrine = match shrine.close() {
         Ok(shrine) => shrine,
         Err(_) => return ErrorResponse::Write(path).into(),
     };
@@ -296,16 +300,17 @@ where
         return ErrorResponse::Write(path).into();
     }
 
-    if let Some(repository) = repository {
-        if repository.commit_auto()
-            && repository
-                .open()
-                .and_then(|r| r.create_commit("Update shrine"))
-                .is_err()
-        {
-            return ErrorResponse::Write(path).into();
-        }
-    }
+    // todo repository
+    // if let Some(repository) = repository {
+    //     if repository.commit_auto()
+    //         && repository
+    //             .open()
+    //             .and_then(|r| r.create_commit("Update shrine"))
+    //             .is_err()
+    //     {
+    //         return ErrorResponse::Write(path).into();
+    //     }
+    // }
 
     Response::builder()
         .status(StatusCode::NO_CONTENT)
@@ -320,23 +325,21 @@ async fn delete_key<P>(
 where
     P: ShrineProvider,
 {
-    info!(
-        "delete_key `{}` on file `{}/{}`",
-        key, path, SHRINE_FILENAME
-    );
+    info!("delete_key `{}` on file `{}`", key, path);
 
-    let (mut shrine, shrine_password) = match open_shrine::<P>(&state, &path) {
-        Ok(v) => v,
+    let mut shrine = match open_shrine::<P>(&state, &path) {
+        Ok(s) => s,
         Err(response) => return response,
     };
 
-    let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
+    // todo repository
+    // let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
 
-    if !shrine.remove(&key) {
+    if !shrine.rm(&key) {
         return ErrorResponse::KeyNotFound { file: path, key }.into();
     }
 
-    let shrine = match shrine.close(&shrine_password) {
+    let shrine = match shrine.close() {
         Ok(shrine) => shrine,
         Err(_) => return ErrorResponse::Write(path).into(),
     };
@@ -344,16 +347,17 @@ where
         return ErrorResponse::Write(path).into();
     }
 
-    if let Some(repository) = repository {
-        if repository.commit_auto()
-            && repository
-                .open()
-                .and_then(|r| r.create_commit("Update shrine"))
-                .is_err()
-        {
-            return ErrorResponse::Write(path).into();
-        }
-    }
+    // todo repository
+    // if let Some(repository) = repository {
+    //     if repository.commit_auto()
+    //         && repository
+    //             .open()
+    //             .and_then(|r| r.create_commit("Update shrine"))
+    //             .is_err()
+    //     {
+    //         return ErrorResponse::Write(path).into();
+    //     }
+    // }
 
     Response::builder()
         .status(StatusCode::NO_CONTENT)
@@ -416,11 +420,11 @@ where
 }
 
 trait ShrineProvider: Clone + Send + Sync + 'static {
-    fn load_from_path<P>(&self, path: P) -> Result<Shrine<Closed>, Error>
+    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine, Error>
     where
         P: AsRef<std::path::Path>;
 
-    fn save_to_path<P>(&self, path: P, shrine: Shrine<Closed>) -> Result<(), Error>
+    fn save_to_path<P>(&self, path: P, shrine: ClosedShrine) -> Result<(), Error>
     where
         P: AsRef<std::path::Path>;
 }
@@ -429,26 +433,32 @@ trait ShrineProvider: Clone + Send + Sync + 'static {
 struct DefaultShrineProvider {}
 
 impl ShrineProvider for DefaultShrineProvider {
-    fn load_from_path<P>(&self, path: P) -> Result<Shrine<Closed>, Error>
+    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine, Error>
     where
         P: AsRef<std::path::Path>,
     {
-        Shrine::from_path(path)
+        Ok(match LoadedShrine::try_from_path(path)? {
+            LoadedShrine::Clear(s) => ClosedShrine::LocalClear(s),
+            LoadedShrine::Aes(s) => ClosedShrine::LocalAes(s),
+        })
     }
 
-    fn save_to_path<P>(&self, path: P, shrine: Shrine<Closed>) -> Result<(), Error>
+    fn save_to_path<P>(&self, _path: P, _shrine: ClosedShrine) -> Result<(), Error>
     where
         P: AsRef<std::path::Path>,
     {
-        shrine.to_path(path)
+        todo!()
+        //shrine.to_path(path)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bytes::SecretBytes;
-    use crate::shrine::{Closed, EncryptionAlgorithm, Mode, ShrineBuilder};
+    use crate::shrine::local::LocalShrine;
+    use crate::shrine::ClosedShrine;
+    use crate::values::bytes::SecretBytes;
+    use crate::values::secret::{Mode, Secret};
     use axum::body::HttpBody;
     use axum::http::Request;
     use hyper::Body;
@@ -457,34 +467,30 @@ mod tests {
 
     #[derive(Clone)]
     struct MockShrineProvider {
-        shrine: Arc<Mutex<RefCell<Shrine<Closed>>>>,
+        shrine: Arc<Mutex<RefCell<Option<ClosedShrine>>>>,
     }
 
     impl MockShrineProvider {
-        fn new(shrine: Shrine<Closed>) -> Self {
+        fn new(shrine: ClosedShrine) -> Self {
             Self {
-                shrine: Arc::new(Mutex::new(RefCell::new(shrine))),
+                shrine: Arc::new(Mutex::new(RefCell::new(Some(shrine)))),
             }
         }
     }
 
     impl ShrineProvider for MockShrineProvider {
-        fn load_from_path<P>(&self, _path: P) -> Result<Shrine<Closed>, Error>
+        fn load_from_path<P>(&self, _path: P) -> Result<ClosedShrine, Error>
         where
             P: AsRef<std::path::Path>,
         {
-            Ok(self
-                .shrine
-                .lock()
-                .unwrap()
-                .replace(Shrine::default().close(&ShrinePassword::default()).unwrap()))
+            Ok(self.shrine.lock().unwrap().take().unwrap())
         }
 
-        fn save_to_path<P>(&self, _path: P, shrine: Shrine<Closed>) -> Result<(), Error>
+        fn save_to_path<P>(&self, _path: P, shrine: ClosedShrine) -> Result<(), Error>
         where
             P: AsRef<std::path::Path>,
         {
-            self.shrine.lock().unwrap().replace(shrine);
+            self.shrine.lock().unwrap().replace(Some(shrine));
             Ok(())
         }
     }
@@ -500,14 +506,15 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-                .build();
-            shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::default()).unwrap()
+            let mut shrine = LocalShrine::new().into_clear();
+            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine.close().unwrap()
         };
 
-        let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
+        let state = State(AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        ));
 
         let response =
             super::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
@@ -526,15 +533,16 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-                .build();
-            shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::default()).unwrap()
+            let mut shrine = LocalShrine::new().into_clear();
+            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine.close().unwrap()
         };
 
         let response = super::get_key(
-            State(AgentState::new(MockShrineProvider::new(shrine), tx)),
+            State(AgentState::new(
+                MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+                tx,
+            )),
             Path(("fake_path".to_string(), "unknown key".to_string())),
         )
         .await;
@@ -547,14 +555,15 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Aes)
-                .build();
-            shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::default()).unwrap()
+            let mut shrine = LocalShrine::new();
+            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine.close("password".to_string()).unwrap()
         };
 
-        let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
+        let state = State(AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalAes(shrine)),
+            tx,
+        ));
 
         let response =
             super::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
@@ -568,16 +577,17 @@ mod tests {
 
         let shrine_password = ShrinePassword::from("password");
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Aes)
-                .build();
-            shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&shrine_password).unwrap()
+            let mut shrine = LocalShrine::new();
+            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine.close("password".to_string()).unwrap()
         };
 
         let uuid = shrine.uuid();
 
-        let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
+        let state = State(AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalAes(shrine)),
+            tx,
+        ));
 
         state.set_password(uuid, shrine_password);
 
@@ -598,15 +608,18 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-                .build();
-            shrine.set("key", "text", Mode::Text).unwrap();
-            shrine.set("binkey", "bin", Mode::Binary).unwrap();
-            shrine.close(&ShrinePassword::default()).unwrap()
+            let mut shrine = LocalShrine::new().into_clear();
+            shrine.set("key", "text".as_bytes(), Mode::Text).unwrap();
+            shrine
+                .set("binkey", "bin".as_bytes(), Mode::Binary)
+                .unwrap();
+            shrine.close().unwrap()
         };
 
-        let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
+        let state = State(AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        ));
 
         let response = super::get_keys(
             state,
@@ -631,14 +644,15 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-                .build();
-            shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::default()).unwrap()
+            let mut shrine = LocalShrine::new().into_clear();
+            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine.close().unwrap()
         };
 
-        let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
+        let state = State(AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        ));
 
         super::put_key(
             state.clone(),
@@ -664,14 +678,15 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = ShrineBuilder::new()
-                .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-                .build();
-            shrine.set("key", "value", Mode::Text).unwrap();
-            shrine.close(&ShrinePassword::default()).unwrap()
+            let mut shrine = LocalShrine::new().into_clear();
+            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine.close().unwrap()
         };
 
-        let state = State(AgentState::new(MockShrineProvider::new(shrine), tx));
+        let state = State(AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        ));
         super::delete_key(state.clone(), Path((String::default(), "key".to_string()))).await;
 
         let value = super::get_key(state, Path((String::default(), "key".to_string()))).await;
@@ -683,7 +698,9 @@ mod tests {
     async fn route_get_pid() {
         let (tx, _) = channel::<()>();
         let state = AgentState::new(
-            MockShrineProvider::new(Shrine::default().close(&ShrinePassword::default()).unwrap()),
+            MockShrineProvider::new(ClosedShrine::LocalClear(
+                LocalShrine::new().into_clear().close().unwrap(),
+            )),
             tx,
         );
 
@@ -699,12 +716,8 @@ mod tests {
     #[tokio::test]
     async fn route_get_key_requires_password() {
         let (tx, _) = channel::<()>();
-        let shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Aes)
-            .build()
-            .close(&ShrinePassword::default())
-            .unwrap();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let shrine = LocalShrine::new().close("passwors".to_string()).unwrap();
+        let state = AgentState::new(MockShrineProvider::new(ClosedShrine::LocalAes(shrine)), tx);
 
         let response = router()
             .with_state(state)
@@ -718,14 +731,15 @@ mod tests {
     #[tokio::test]
     async fn route_put_password_then_get_key_then_delete_password() {
         let (tx, _) = channel::<()>();
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Aes)
-            .build();
-        shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::from("password")).unwrap();
+        let mut shrine = LocalShrine::new();
+        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        let shrine = shrine.close("password".to_string()).unwrap();
 
         let uuid = shrine.uuid();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let state = AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalAes(shrine.clone())),
+            tx,
+        );
 
         let response = router()
             .with_state(state.clone())
@@ -759,6 +773,12 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
+        // make sure we have some shrine
+        state
+            .shrine_provider
+            .save_to_path("", ClosedShrine::LocalAes(shrine))
+            .unwrap();
+
         let response = router()
             .with_state(state)
             .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
@@ -770,12 +790,11 @@ mod tests {
     #[tokio::test]
     async fn route_get_key_not_found() {
         let (tx, _) = channel::<()>();
-        let shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build()
-            .close(&ShrinePassword::default())
-            .unwrap();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let shrine = LocalShrine::new().into_clear().close().unwrap();
+        let state = AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        );
 
         let response = router()
             .with_state(state)
@@ -789,12 +808,13 @@ mod tests {
     #[tokio::test]
     async fn route_get_key() {
         let (tx, _) = channel::<()>();
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build();
-        shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let mut shrine = LocalShrine::new().into_clear();
+        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        let shrine = shrine.close().unwrap();
+        let state = AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        );
 
         let response = router()
             .with_state(state)
@@ -815,12 +835,13 @@ mod tests {
     #[tokio::test]
     async fn route_get_secrets() {
         let (tx, _) = channel::<()>();
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build();
-        shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let mut shrine = LocalShrine::new().into_clear();
+        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        let shrine = shrine.close().unwrap();
+        let state = AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        );
 
         let response = router()
             .with_state(state)
@@ -843,12 +864,13 @@ mod tests {
     #[tokio::test]
     async fn route_delete_key() {
         let (tx, _) = channel::<()>();
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build();
-        shrine.set("key", "value", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let mut shrine = LocalShrine::new().into_clear();
+        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        let shrine = shrine.close().unwrap();
+        let state = AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        );
 
         let response = router()
             .with_state(state.clone())
@@ -866,7 +888,7 @@ mod tests {
             .shrine_provider
             .load_from_path("")
             .unwrap()
-            .open(&ShrinePassword::default())
+            .open(|_| "".to_string())
             .unwrap();
 
         let error = shrine.get("key").err().unwrap();
@@ -876,12 +898,11 @@ mod tests {
     #[tokio::test]
     async fn route_set_key() {
         let (tx, _) = channel::<()>();
-        let shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build()
-            .close(&ShrinePassword::default())
-            .unwrap();
-        let state = AgentState::new(MockShrineProvider::new(shrine), tx);
+        let shrine = LocalShrine::new().into_clear().close().unwrap();
+        let state = AgentState::new(
+            MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
+            tx,
+        );
 
         let response = router()
             .with_state(state.clone())
@@ -906,7 +927,7 @@ mod tests {
             .shrine_provider
             .load_from_path("")
             .unwrap()
-            .open(&ShrinePassword::default())
+            .open(|_| "".to_string())
             .unwrap();
         let secret = shrine.get("key").unwrap();
 

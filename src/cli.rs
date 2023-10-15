@@ -10,14 +10,18 @@ use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
 use shrine::controller::set;
 use shrine::controller::set::set;
-#[cfg(unix)]
-use shrine::controller::{agent, config, get};
-use shrine::shrine::{EncryptionAlgorithm, FilesystemShrineProvider, Mode, ShrinePassword};
+use shrine::controller::{config, get};
+use shrine::shrine::encryption::EncryptionAlgorithm;
+use shrine::utils::read_password;
+use shrine::values::password::ShrinePassword;
+use shrine::values::secret::Mode;
 use shrine::Error;
+use std::env;
 use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;
-use std::{env, fs};
+
+static SHRINE_FILENAME: &str = "shrine";
 
 #[derive(Clone, Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
@@ -253,89 +257,136 @@ fn main() -> ExitCode {
 }
 
 fn exec(cli: Args) -> Result<(), Error> {
-    let password = cli.password.map(ShrinePassword::from);
-    let path = cli
-        .path
-        .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
-    let path = fs::canonicalize(path).unwrap();
-
     #[cfg(unix)]
     let client = HttpClient::<SocketClient>::new().unwrap();
     #[cfg(not(unix))]
-    let client = NoClient::new();
+    let client = shrine::agent::client::NoClient {};
 
-    let shrine_provider = FilesystemShrineProvider::new(path, password.clone());
+    #[cfg(unix)]
+    if let Some(Commands::Agent { command }) = cli.command {
+        return match command {
+            Some(AgentCommands::Start) => shrine::controller::agent::start(client),
+            Some(AgentCommands::Stop) => shrine::controller::agent::stop(client),
+            Some(AgentCommands::ClearPasswords) => {
+                shrine::controller::agent::clear_passwords(client)
+            }
+            Some(AgentCommands::Status) => shrine::controller::agent::status(client),
+            None => panic!(),
+        };
+    }
+
+    let password = cli.password.clone().map(ShrinePassword::from);
+    let path = {
+        let mut path = cli
+            .path
+            .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
+        path.push(SHRINE_FILENAME);
+        path
+        // todo fs::canonicalize(path).unwrap()
+    };
+
+    let shrine = match shrine::shrine::new(Box::new(client), &path) {
+        Ok(s) => Ok(s),
+        Err(Error::FileNotFound(file)) => {
+            if let Some(Commands::Init {
+                force,
+                encryption,
+                git,
+            }) = cli.command
+            {
+                init(
+                    file,
+                    force,
+                    encryption.map(|algo| algo.into()),
+                    git,
+                    move |uuid| match &password {
+                        None => read_password(uuid).expose_secret().to_string(),
+                        Some(password) => password.expose_secret().to_string(),
+                    },
+                )?;
+
+                return Ok(());
+            } else {
+                Err(Error::FileNotFound(file))
+            }
+        }
+        e => e,
+    }?;
+
+    if let Some(Commands::Info { field }) = cli.command {
+        return info(&shrine, field.map(Fields::from), &path);
+    }
+
+    let shrine = shrine.open({
+        let password = password.clone();
+        move |uuid| match &password {
+            None => read_password(uuid).expose_secret().to_string(),
+            Some(password) => password.expose_secret().to_string(),
+        }
+    })?;
 
     match cli.command {
-        #[cfg(unix)]
-        Some(Commands::Agent { command }) => match command {
-            Some(AgentCommands::Start) => agent::start(client),
-            Some(AgentCommands::Stop) => agent::stop(client),
-            Some(AgentCommands::ClearPasswords) => agent::clear_passwords(client),
-            Some(AgentCommands::Status) => agent::status(client),
-            _ => panic!(),
-        },
         Some(Commands::Init {
             force,
             encryption,
             git,
         }) => init(
-            shrine_provider,
-            password,
+            path,
             force,
             encryption.map(|algo| algo.into()),
             git,
+            move |uuid| match &password {
+                None => read_password(uuid).expose_secret().to_string(),
+                Some(password) => password.expose_secret().to_string(),
+            },
         ),
         Some(Commands::Convert {
             change_password,
             new_password,
             encryption,
         }) => convert(
-            shrine_provider,
+            shrine,
             change_password,
             new_password.as_ref().map(ShrinePassword::from),
             encryption.map(|algo| algo.into()),
+            &path,
         ),
-        Some(Commands::Info { field }) => info(shrine_provider, field.map(Fields::from)),
+
         Some(Commands::Set {
             key,
             stdin,
             mode,
             value,
         }) => set(
-            client,
-            shrine_provider,
+            shrine,
             &key,
             set::Input {
                 read_from_stdin: stdin,
                 mode: mode.to_mode(stdin),
                 value: value.as_deref(),
             },
+            &path,
         ),
-        Some(Commands::Get { key, encoding }) => get(
-            client,
-            shrine_provider,
-            &key,
-            encoding.into(),
-            &mut stdout(),
-        ),
-        Some(Commands::Ls { pattern }) => ls(
-            client,
-            shrine_provider,
-            pattern.as_ref().map(|p| p.as_str()),
-            &mut stdout(),
-        ),
-        Some(Commands::Rm { key }) => rm(client, shrine_provider, &key),
-        Some(Commands::Import { file, prefix }) => {
-            import(shrine_provider, &file, prefix.as_deref())
+        Some(Commands::Get { key, encoding }) => get(&shrine, &key, encoding.into(), &mut stdout()),
+        Some(Commands::Ls { pattern }) => ls(&shrine, pattern.as_deref(), &mut stdout()),
+        Some(Commands::Rm { key }) => rm(shrine, &key, &path),
+        Some(Commands::Import { file, prefix }) => import(shrine, &file, prefix.as_deref(), &path),
+        Some(Commands::Dump { pattern, config }) => {
+            dump(&shrine, pattern.as_deref(), config, &path)
         }
-        Some(Commands::Dump { pattern, config }) => dump(shrine_provider, pattern.as_ref(), config),
+        // Some(Commands::Dump { pattern, config }) => dump(shrine_provider, pattern.as_ref(), config),
         Some(Commands::Config { command }) => match command {
-            Some(ConfigCommands::Set { key, value }) => config::set(shrine_provider, key, value),
-            Some(ConfigCommands::Get { key }) => config::get(shrine_provider, &key),
+            Some(ConfigCommands::Set { key, value }) => config::set(shrine, &key, value, path),
+            Some(ConfigCommands::Get { key: _key }) => todo!(), //config::get(shrine_provider, &key),
             _ => panic!(),
         },
-        _ => panic!(),
+        Some(Commands::Info { .. }) => {
+            unreachable!("this case is treated before getting to this match expression")
+        }
+        Some(Commands::Agent { .. }) => {
+            unreachable!("this case is treated before getting to this match expression")
+        }
+        None => panic!(),
     }
 }
 

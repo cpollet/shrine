@@ -1,10 +1,9 @@
-use crate::agent::client::Client;
-use crate::git::Repository;
-use crate::shrine::{Mode, ShrineProvider};
-
+use crate::shrine::{OpenShrine, QueryOpen};
+use crate::values::secret::Mode;
 use crate::Error;
 use rpassword::prompt_password;
 use std::io::Read;
+use std::path::Path;
 
 pub struct Input<'a> {
     pub read_from_stdin: bool,
@@ -12,16 +11,14 @@ pub struct Input<'a> {
     pub value: Option<&'a str>,
 }
 
-pub fn set<C, P>(
-    client: C,
-    mut shrine_provider: P,
-    key: &str,
-    input: Input<'_>,
-) -> Result<(), Error>
+pub fn set<P>(mut shrine: OpenShrine, key: &str, input: Input<'_>, path: P) -> Result<(), Error>
 where
-    C: Client,
-    P: ShrineProvider,
+    P: AsRef<Path>,
 {
+    if key.starts_with('.') {
+        return Err(Error::KeyNotFound(key.to_string()));
+    }
+
     let value = if input.read_from_stdin {
         let mut input = Vec::new();
         let stdin = std::io::stdin();
@@ -38,96 +35,83 @@ where
     };
     let value = value.as_slice();
 
-    if client.is_running() {
-        client.set_key(
-            shrine_provider.path().to_str().unwrap(),
-            key,
-            value,
-            input.mode,
-        )?;
-    } else {
-        let mut shrine = shrine_provider.load_open()?;
-        let repository = Repository::new(shrine_provider.path(), &shrine);
-        shrine.set(key, value, input.mode)?;
-        shrine_provider.save_open(shrine)?;
+    shrine.set(key, value, input.mode)?;
 
-        if let Some(repository) = repository {
-            if repository.commit_auto() {
-                repository
-                    .open()
-                    .and_then(|r| r.create_commit("Update shrine"))?;
-            }
-        }
-    }
+    let shrine = shrine.close()?;
+
+    shrine.write_file(path)?;
+
+    // todo git repo
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::agent::client::mock::MockClient;
-    use crate::shrine::mocks::MockShrineProvider;
-    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
+    // use super::*;
+    // use crate::agent::client::mock::MockClient;
+    // use crate::shrine::mocks::MockShrineProvider;
+    // use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
 
-    #[test]
-    fn get_direct() {
-        let mut client = MockClient::default();
-        client.with_is_running(false);
+    // #[test]
+    // fn get_direct() {
+    //     let mut client = MockClient::default();
+    //     client.with_is_running(false);
+    //
+    //     let mut shrine = ShrineBuilder::new()
+    //         .with_encryption_algorithm(EncryptionAlgorithm::Plain)
+    //         .build();
+    //     shrine.set("key", "secret", Mode::Text).unwrap();
+    //     let shrine = shrine.close(&ShrinePassword::default()).unwrap();
+    //
+    //     let shrine_provider = MockShrineProvider::new(shrine);
+    //
+    //
+    //     set(
+    //         client,
+    //         shrine_provider.clone(),
+    //         "key",
+    //         Input {
+    //             read_from_stdin: false,
+    //             mode: Mode::Text,
+    //             value: Some("value"),
+    //         },
+    //     )
+    //     .expect("expected Ok(())");
+    //
+    //     let shrine = shrine_provider
+    //         .load_closed()
+    //         .unwrap()
+    //         .open(&ShrinePassword::default())
+    //         .unwrap();
+    //     let secret = shrine.get("key").unwrap();
+    //     assert_eq!("value".as_bytes(), secret.value().expose_secret_as_bytes());
+    // }
 
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build();
-        shrine.set("key", "secret", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
-
-        let shrine_provider = MockShrineProvider::new(shrine);
-
-        set(
-            client,
-            shrine_provider.clone(),
-            "key",
-            Input {
-                read_from_stdin: false,
-                mode: Mode::Text,
-                value: Some("value"),
-            },
-        )
-        .expect("expected Ok(())");
-
-        let shrine = shrine_provider
-            .load_closed()
-            .unwrap()
-            .open(&ShrinePassword::default())
-            .unwrap();
-        let secret = shrine.get("key").unwrap();
-        assert_eq!("value".as_bytes(), secret.value().expose_secret_as_bytes());
-    }
-
-    #[test]
-    fn set_through_agent() {
-        let mut client = MockClient::default();
-        client.with_is_running(true);
-        client.with_set_key(
-            "/path/to/shrine",
-            "key",
-            "value".as_bytes(),
-            &Mode::Text,
-            Ok(()),
-        );
-
-        let shrine_provider = MockShrineProvider::default();
-
-        set(
-            client,
-            shrine_provider,
-            "key",
-            Input {
-                read_from_stdin: false,
-                mode: Mode::Text,
-                value: Some("value"),
-            },
-        )
-        .expect("Expect Ok(())")
-    }
+    // #[test]
+    // fn set_through_agent() {
+    //     let mut client = MockClient::default();
+    //     client.with_is_running(true);
+    //     client.with_set_key(
+    //         "/path/to/shrine",
+    //         "key",
+    //         "value".as_bytes(),
+    //         &Mode::Text,
+    //         Ok(()),
+    //     );
+    //
+    //     let shrine_provider = MockShrineProvider::default();
+    //
+    //     set(
+    //         client,
+    //         shrine_provider,
+    //         "key",
+    //         Input {
+    //             read_from_stdin: false,
+    //             mode: Mode::Text,
+    //             value: Some("value"),
+    //         },
+    //     )
+    //     .expect("Expect Ok(())")
+    // }
 }

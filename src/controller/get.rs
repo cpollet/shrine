@@ -1,32 +1,21 @@
-use crate::agent::client::Client;
-use crate::shrine::{Mode, Secret, ShrineProvider};
+use crate::shrine::{OpenShrine, QueryOpen};
+use crate::values::secret::{Mode, Secret};
 use crate::Error;
 use atty::Stream;
 use base64::Engine;
 use std::io::Write;
 
-pub fn get<C, P, O>(
-    client: C,
-    mut shrine_provider: P,
-    key: &str,
-    encoding: Encoding,
-    out: &mut O,
-) -> Result<(), Error>
+pub fn get<O>(shrine: &OpenShrine, key: &str, encoding: Encoding, out: &mut O) -> Result<(), Error>
 where
-    C: Client,
-    P: ShrineProvider,
     O: Write,
 {
-    let secret = if client.is_running() {
-        encoding.encode(&client.get_key(shrine_provider.path().to_str().unwrap(), key)?)
-    } else {
-        let shrine = shrine_provider.load_open()?;
-        let secret = shrine.get(key)?;
-        encoding.encode(secret)
-    };
+    if key.starts_with('.') {
+        return Err(Error::KeyNotFound(key.to_string()));
+    }
 
-    out.write_all(secret.as_slice()).unwrap();
-    Ok(())
+    let secret = shrine.get(key)?;
+    let secret = encoding.encode(secret);
+    out.write_all(secret.as_slice()).map_err(Error::IoWrite)
 }
 
 pub enum Encoding {
@@ -61,61 +50,62 @@ impl Encoding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::client::mock::MockClient;
-    use crate::shrine::mocks::MockShrineProvider;
-    use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword};
+    use crate::shrine::local::LocalShrine;
 
     #[test]
-    fn get_direct() {
-        let mut client = MockClient::default();
-        client.with_is_running(false);
-
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build();
-        shrine.set("key", "secret", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
-
-        let shrine_provider = MockShrineProvider::new(shrine);
+    fn get_auto() {
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        shrine
+            .set("txt_key", "value".as_bytes(), Mode::Text)
+            .unwrap();
+        shrine
+            .set("bin_key", "value".as_bytes(), Mode::Binary)
+            .unwrap();
 
         let mut out = Vec::<u8>::new();
+        get(&shrine, "txt_key", Encoding::Auto, &mut out).unwrap();
+        assert_eq!(out.as_slice(), "value".as_bytes());
 
-        get(client, shrine_provider, "key", Encoding::Raw, &mut out).expect("expected Ok(())");
-
-        assert_eq!(out.as_slice(), "secret".as_bytes());
+        let mut out = Vec::<u8>::new();
+        get(&shrine, "bin_key", Encoding::Auto, &mut out).unwrap();
+        assert_eq!(out.as_slice(), "dmFsdWU=".as_bytes());
     }
 
     #[test]
-    fn get_through_agent() {
-        let mut client = MockClient::default();
-        client.with_is_running(true);
-        client.with_get_key(
-            "/path/to/shrine",
-            "key",
-            Ok(serde_json::from_str::<Secret>(
-                r#"
-                {
-                    "value": [115,101,99,114,101,116],
-                    "mode": "Text",
-                    "created_by": "cpollet@localhost",
-                    "created_at": "2023-06-20T17:51:11.786655084Z"
-                }
-            "#,
-            )
-            .unwrap()),
-        );
+    fn get_raw() {
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        shrine
+            .set("txt_key", "value".as_bytes(), Mode::Text)
+            .unwrap();
+        shrine
+            .set("bin_key", "value".as_bytes(), Mode::Binary)
+            .unwrap();
 
         let mut out = Vec::<u8>::new();
+        get(&shrine, "txt_key", Encoding::Raw, &mut out).unwrap();
+        assert_eq!(out.as_slice(), "value".as_bytes());
 
-        get(
-            client,
-            MockShrineProvider::default(),
-            "key",
-            Encoding::Raw,
-            &mut out,
-        )
-        .expect("expected Ok(())");
+        let mut out = Vec::<u8>::new();
+        get(&shrine, "bin_key", Encoding::Raw, &mut out).unwrap();
+        assert_eq!(out.as_slice(), "value".as_bytes());
+    }
 
-        assert_eq!(out.as_slice(), "secret".as_bytes());
+    #[test]
+    fn get_base64() {
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        shrine
+            .set("txt_key", "value".as_bytes(), Mode::Text)
+            .unwrap();
+        shrine
+            .set("bin_key", "value".as_bytes(), Mode::Binary)
+            .unwrap();
+
+        let mut out = Vec::<u8>::new();
+        get(&shrine, "txt_key", Encoding::Base64, &mut out).unwrap();
+        assert_eq!(out.as_slice(), "dmFsdWU=".as_bytes());
+
+        let mut out = Vec::<u8>::new();
+        get(&shrine, "bin_key", Encoding::Base64, &mut out).unwrap();
+        assert_eq!(out.as_slice(), "dmFsdWU=".as_bytes());
     }
 }

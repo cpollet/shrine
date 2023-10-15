@@ -7,7 +7,6 @@ use tempfile::TempDir;
 #[test]
 fn init() {
     let folder = tempfile::tempdir().unwrap();
-    let canonical = folder.path().canonicalize().unwrap();
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -15,10 +14,7 @@ fn init() {
         .args(vec!["--password", "p", "init"])
         .assert()
         .success()
-        .stdout(format!(
-            "Initialized new shrine in `{}/shrine`\n",
-            canonical.as_path().display()
-        ));
+        .stdout("Initialized new shrine in `./shrine`\n");
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -26,16 +22,12 @@ fn init() {
         .args(vec!["--password", "p", "init"])
         .assert()
         .failure()
-        .stderr(format!(
-            "Shrine file `{}/shrine` already exists\n",
-            canonical.as_path().display()
-        ));
+        .stderr("Shrine file `./shrine` already exists\n");
 }
 
 #[test]
 fn init_other_folder() {
     let folder = tempfile::tempdir().unwrap();
-    let canonical = folder.path().canonicalize().unwrap();
 
     fs::create_dir(folder.path().join("other")).unwrap();
 
@@ -45,10 +37,7 @@ fn init_other_folder() {
         .args(vec!["--path", "other", "--password", "p", "init"])
         .assert()
         .success()
-        .stdout(format!(
-            "Initialized new shrine in `{}/other/shrine`\n",
-            canonical.as_path().display()
-        ));
+        .stdout("Initialized new shrine in `other/shrine`\n");
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -56,10 +45,7 @@ fn init_other_folder() {
         .args(vec!["--path", "other", "--password", "p", "init"])
         .assert()
         .failure()
-        .stderr(format!(
-            "Shrine file `{}/other/shrine` already exists\n",
-            canonical.as_path().display()
-        ));
+        .stderr("Shrine file `other/shrine` already exists\n");
 }
 
 #[test]
@@ -244,7 +230,6 @@ fn import_with_prefix() {
 
 fn create_shrine(pwd: &str) -> TempDir {
     let folder = tempfile::tempdir().unwrap();
-    let canonical = folder.path().canonicalize().unwrap();
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -252,10 +237,7 @@ fn create_shrine(pwd: &str) -> TempDir {
         .args(vec!["--password", pwd, "init"])
         .assert()
         .success()
-        .stdout(format!(
-            "Initialized new shrine in `{}/shrine`\n",
-            canonical.as_path().display()
-        ));
+        .stdout("Initialized new shrine in `./shrine`\n");
 
     folder
 }
@@ -263,7 +245,6 @@ fn create_shrine(pwd: &str) -> TempDir {
 #[test]
 fn git() {
     let folder = tempfile::tempdir().unwrap();
-    let canonical = folder.path().canonicalize().unwrap();
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -271,10 +252,9 @@ fn git() {
         .args(vec!["--password", "p", "init", "--git"])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with(format!(
-            "Initialized new shrine in `{}/shrine`; git commit",
-            canonical.as_path().display()
-        )));
+        .stdout(predicate::str::starts_with(
+            "Initialized new shrine in `./shrine`; git commit",
+        ));
 
     assert_cmd::Command::new("git")
         .current_dir(&folder)
@@ -287,7 +267,6 @@ fn git() {
 #[test]
 fn git_disable_auto_commit() {
     let folder = tempfile::tempdir().unwrap();
-    let canonical = folder.path().canonicalize().unwrap();
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -295,10 +274,9 @@ fn git_disable_auto_commit() {
         .args(vec!["--password", "p", "init", "--git"])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with(format!(
-            "Initialized new shrine in `{}/shrine`; git commit",
-            canonical.as_path().display()
-        )));
+        .stdout(predicate::str::starts_with(
+            "Initialized new shrine in `./shrine`; git commit",
+        ));
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -327,13 +305,12 @@ fn git_disable_auto_commit() {
         .args(vec!["rev-list", "HEAD", "--count"])
         .assert()
         .success()
-        .stdout("2\n");
+        .stdout("1\n");
 }
 
 #[test]
 fn git_then_disable_git() {
     let folder = tempfile::tempdir().unwrap();
-    let canonical = folder.path().canonicalize().unwrap();
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -341,10 +318,9 @@ fn git_then_disable_git() {
         .args(vec!["--password", "p", "init", "--git"])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with(format!(
-            "Initialized new shrine in `{}/shrine`; git commit",
-            canonical.as_path().display()
-        )));
+        .stdout(predicate::str::starts_with(
+            "Initialized new shrine in `./shrine`; git commit",
+        ));
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -373,5 +349,5 @@ fn git_then_disable_git() {
         .args(vec!["rev-list", "HEAD", "--count"])
         .assert()
         .success()
-        .stdout("2\n");
+        .stdout("1\n");
 }

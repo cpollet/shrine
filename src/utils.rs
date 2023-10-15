@@ -1,4 +1,4 @@
-use crate::shrine::ShrinePassword;
+use crate::values::password::ShrinePassword;
 use crate::Error;
 use csv::ReaderBuilder;
 use serde::Deserialize;

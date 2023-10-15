@@ -1,25 +1,20 @@
-use std::error::Error as StdError;
-
 use std::path::PathBuf;
-
 pub mod agent;
-pub mod bytes;
 pub mod controller;
 pub mod encrypt;
 pub mod git;
 pub mod serialize;
 pub mod shrine;
 pub mod utils;
-
-static SHRINE_FILENAME: &str = "shrine";
+pub mod values;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Could not perform git action")]
     Git(#[from] git2::Error),
 
-    #[error("The input file `{1}` is not a valid dotenv file: {0}")]
-    InvalidDotEnv(Box<dyn StdError>, PathBuf),
+    #[error("The input file `{0}` is not a valid dotenv file")]
+    InvalidDotEnv(PathBuf),
 
     #[error("Unsupported shrine version: {0}")]
     UnsupportedVersion(u8),

@@ -1,56 +1,63 @@
 use crate::git::Repository;
-use crate::shrine::{EncryptionAlgorithm, ShrineBuilder, ShrinePassword, ShrineProvider};
-use crate::utils::read_new_password;
-use crate::{git, Error, SHRINE_FILENAME};
+use crate::shrine::encryption::EncryptionAlgorithm;
+use crate::shrine::local::LocalShrine;
+use crate::shrine::QueryClosed;
+use crate::{git, Error};
+use std::path::{Path, PathBuf};
 use std::string::ToString;
+use uuid::Uuid;
 
-pub fn init<P>(
-    shrine_provider: P,
-    password: Option<ShrinePassword>,
+pub fn init<P, F>(
+    path: P,
     force: bool,
     encryption: Option<EncryptionAlgorithm>,
     git: bool,
+    password_provider: F,
 ) -> Result<(), Error>
 where
-    P: ShrineProvider,
+    P: AsRef<Path> + Clone,
+    PathBuf: From<P>,
+    F: Fn(Uuid) -> String,
 {
-    let file = shrine_provider.path().join(SHRINE_FILENAME);
-
-    if !force && file.exists() {
-        return Err(Error::FileAlreadyExists(file.display().to_string()));
+    if !force && path.as_ref().exists() {
+        return Err(Error::FileAlreadyExists(
+            path.as_ref().display().to_string(),
+        ));
     }
 
-    let mut shrine_builder = ShrineBuilder::new();
-
-    if let Some(encryption) = encryption {
-        shrine_builder = shrine_builder.with_encryption_algorithm(encryption);
-    }
-
-    let mut shrine = shrine_builder.build();
-
-    let password = if shrine.requires_password() {
-        password.map(Ok).unwrap_or_else(read_new_password)?
-    } else {
-        ShrinePassword::default()
-    };
+    let mut shrine = LocalShrine::new();
+    // shrine.with_serialization_format(SerializationFormat::Json);
 
     if git {
         git::write_configuration(&mut shrine);
     }
+    let mut repo_path = PathBuf::from(path.clone());
+    repo_path.pop();
+    let repository = Repository::new(&repo_path, &shrine);
 
-    let repository = Repository::new(shrine_provider.path(), &shrine);
+    match encryption {
+        Some(EncryptionAlgorithm::Plain) => {
+            shrine.into_clear().close()?.write_file(&path)?;
+        }
+        _ => {
+            let uuid = shrine.uuid();
+            shrine
+                .set_password(password_provider(uuid))
+                .close()?
+                .write_file(&path)?;
+        }
+    };
 
-    shrine_provider.save_closed(shrine.close(&password)?)?;
-
-    print!("Initialized new shrine in `{}`", file.display());
+    print!("Initialized new shrine in `{}`", path.as_ref().display());
 
     if let Some(repository) = repository {
         let commit = repository
             .open()
             .and_then(|r| r.create_commit("Initialize shrine"))?;
-        print!("; git commit {}", commit);
+        print!("; git commit {} in {}", commit, repo_path.display());
     }
 
     println!();
+
     Ok(())
 }

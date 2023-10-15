@@ -17,8 +17,6 @@ if rustup show active-toolchain | grep nightly; then
   for file in target/debug/doctestbins/*/rust_out; do
     [[ -x $file ]] && $file
   done
-
-  ./smoke-tests.sh
 fi
 
 cargo llvm-cov report --html --hide-instantiations

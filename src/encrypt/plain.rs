@@ -12,35 +12,33 @@ impl Plain {
 
 impl EncDec for Plain {
     /// No encryption, return the input
-    ///
-    /// ```
-    /// # use shrine::encrypt::EncDec;
-    /// # use shrine::encrypt::plain::Plain;
-    /// let plain = Plain::new();
-    ///
-    /// let clear = "clear";
-    /// let cipher = plain.encrypt(clear.as_ref()).unwrap();
-    ///
-    /// assert_eq!(clear.as_ref(), cipher)
-    /// ```
     fn encrypt(&self, cleartext: &[u8]) -> Result<Vec<u8>, Error> {
         Ok(cleartext.to_vec())
     }
 
     /// No decryption, return the input
-    ///
-    /// ```
-    /// # use shrine::encrypt::EncDec;
-    /// # use shrine::encrypt::plain::Plain;
-    /// let plain = Plain::new();
-    ///
-    /// let cipher = "cipher";
-    /// let clear = plain.decrypt(cipher.as_ref()).unwrap();
-    ///
-    /// assert_eq!(cipher.as_ref(), clear)
-    /// ```
     fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, Error> {
         eprintln!("WARNING: the shrine is not encrypted!");
         Ok(ciphertext.to_vec())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::encrypt::plain::Plain;
+    use crate::encrypt::EncDec;
+
+    #[test]
+    fn encrypt() {
+        let plain = Plain::new();
+        let cipher = plain.encrypt("clear".as_bytes()).unwrap();
+        assert_eq!(cipher, "clear".as_bytes());
+    }
+
+    #[test]
+    fn decrypt() {
+        let plain = Plain::new();
+        let clear = plain.decrypt("cipher".as_bytes()).unwrap();
+        assert_eq!(clear, "cipher".as_bytes());
     }
 }

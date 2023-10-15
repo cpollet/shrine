@@ -1,14 +1,11 @@
+use crate::encrypt::EncDec;
+use crate::values::password::ShrinePassword;
+use crate::Error;
 use aes_gcm_siv::aead::rand_core::RngCore;
 use aes_gcm_siv::aead::{Aead, OsRng, Payload};
 use aes_gcm_siv::{Aes256GcmSiv, Key, KeyInit, Nonce};
-
 use pbkdf2::pbkdf2_hmac_array;
-
 use sha2::Sha256;
-
-use crate::encrypt::EncDec;
-use crate::shrine::ShrinePassword;
-use crate::Error;
 
 pub struct Aes<'pwd> {
     password: &'pwd ShrinePassword,

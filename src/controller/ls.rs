@@ -1,43 +1,31 @@
-use crate::agent::client::Client;
-use crate::shrine::{Key, ShrineProvider};
-
+use crate::shrine::{OpenShrine, QueryOpen};
+use crate::values::key::Key;
 use crate::Error;
 use regex::Regex;
 use std::io::Write;
 
-pub fn ls<C, P, W>(
-    client: C,
-    mut shrine_provider: P,
-    pattern: Option<&str>,
-    out: &mut W,
-) -> Result<(), Error>
+pub fn ls<O>(shrine: &OpenShrine, pattern: Option<&str>, out: &mut O) -> Result<(), Error>
 where
-    C: Client,
-    P: ShrineProvider,
-    W: Write,
+    O: Write,
 {
-    let keys = if client.is_running() {
-        client.ls(shrine_provider.path().to_str().unwrap(), pattern)?
-    } else {
-        let regex = pattern
-            .map(Regex::new)
-            .transpose()
-            .map_err(Error::InvalidPattern)?;
+    let regex = pattern
+        .map(Regex::new)
+        .transpose()
+        .map_err(Error::InvalidPattern)?;
 
-        let shrine = shrine_provider.load_open()?;
+    let mut keys = shrine
+        .keys()
+        .into_iter()
+        .filter(|k| regex.as_ref().map(|r| r.is_match(k)).unwrap_or(true))
+        .collect::<Vec<String>>();
 
-        let mut keys = shrine
-            .keys()
-            .into_iter()
-            .filter(|k| regex.as_ref().map(|r| r.is_match(k)).unwrap_or(true))
-            .collect::<Vec<String>>();
-        keys.sort_unstable();
+    keys.sort_unstable();
 
-        keys.into_iter()
-            .map(|k| (shrine.get(&k).expect("must be there"), k))
-            .map(|(s, k)| Key::from((k, s)))
-            .collect::<Vec<Key>>()
-    };
+    let keys = keys
+        .into_iter()
+        .map(|k| (shrine.get(&k).expect("must be there"), k))
+        .map(|(s, k)| Key::from((k, s)))
+        .collect::<Vec<Key>>();
 
     print(out, keys);
 
@@ -92,26 +80,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::client::mock::MockClient;
-    use crate::shrine::mocks::MockShrineProvider;
-    use crate::shrine::{EncryptionAlgorithm, Mode, ShrineBuilder, ShrinePassword};
+    use crate::shrine::local::LocalShrine;
+    use crate::values::secret::Mode;
+    // use crate::agent::client::mock::MockClient;
+    // use crate::shrine::mocks::MockShrineProvider;
+    // use crate::shrine::{EncryptionAlgorithm, Mode, ShrineBuilder, ShrinePassword};
 
     #[test]
-    fn ls_direct() {
-        let mut client = MockClient::default();
-        client.with_is_running(false);
-
-        let mut shrine = ShrineBuilder::new()
-            .with_encryption_algorithm(EncryptionAlgorithm::Plain)
-            .build();
-        shrine.set("pattern", "secret", Mode::Text).unwrap();
-        let shrine = shrine.close(&ShrinePassword::default()).unwrap();
-
-        let shrine_provider = MockShrineProvider::new(shrine);
+    fn ls() {
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
 
         let mut out = Vec::<u8>::new();
 
-        ls(client, shrine_provider, Some("pattern"), &mut out).expect("expected Ok(())");
+        super::ls(&shrine, Some("key"), &mut out).unwrap();
 
         let out = String::from_utf8(out).unwrap();
         assert!(out.contains(&format!(
@@ -119,35 +101,6 @@ mod tests {
             whoami::username(),
             whoami::hostname()
         )));
-        assert!(out.contains("                   pattern\n"))
-    }
-
-    #[test]
-    fn ls_through_agent() {
-        let mut client = MockClient::default();
-        client.with_is_running(true);
-        client.with_ls(
-            "/path/to/shrine",
-            Some("pattern"),
-            Ok(vec![Key {
-                key: "pattern".to_string(),
-                mode: Mode::Text,
-                created_by: "cpollet".to_string(),
-                created_at: Default::default(),
-                updated_by: None,
-                updated_at: None,
-            }]),
-        );
-
-        let shrine_provider = MockShrineProvider::default();
-
-        let mut out = Vec::<u8>::new();
-
-        ls(client, shrine_provider, Some("pattern"), &mut out).expect("expected Ok(())");
-
-        assert_eq!(
-            String::from_utf8(out).unwrap(),
-            "total 1\ntxt cpollet 1970-01-01 00:00                   pattern\n".to_string()
-        );
+        assert!(out.contains("                   key\n"))
     }
 }
