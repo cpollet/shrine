@@ -1,38 +1,16 @@
 use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
-use crate::values::secret::Mode;
+use crate::utils::Input;
 use crate::Error;
-use rpassword::prompt_password;
-use std::io::Read;
 use std::path::PathBuf;
 
-pub struct Input<'a> {
-    pub read_from_stdin: bool,
-    pub mode: Mode,
-    pub value: Option<&'a str>,
-}
-
-pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, input: Input<'_>) -> Result<(), Error> {
+pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, value: Input) -> Result<(), Error> {
     if key.starts_with('.') {
         return Err(Error::KeyNotFound(key.to_string()));
     }
 
-    let value = if input.read_from_stdin {
-        let mut input = Vec::new();
-        let stdin = std::io::stdin();
-        let mut handle = stdin.lock();
-        handle.read_to_end(&mut input).map_err(Error::ReadStdIn)?;
-        input
-    } else {
-        input
-            .value
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| prompt_password(format!("Enter `{}` value: ", key)).unwrap())
-            .as_bytes()
-            .to_vec()
-    };
-    let value = value.as_slice();
+    let (value, mode) = value.get(&format!("Enter `{}` value: ", key))?;
 
-    shrine.set(key, value, input.mode)?;
+    shrine.set(key, value, mode)?;
 
     let shrine = shrine.close()?;
 

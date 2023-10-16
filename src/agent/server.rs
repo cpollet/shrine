@@ -264,7 +264,7 @@ where
                 Some(p) => p,
             };
             OpenShrine::LocalAes(
-                s.open(password.expose_secret().to_string())
+                s.open(password)
                     .map_err(|_| ErrorResponse::Forbidden(uuid))?,
             )
         }
@@ -293,7 +293,7 @@ where
     // todo repository
     // let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
 
-    match shrine.set(&key, request.secret.expose_secret_as_bytes(), request.mode) {
+    match shrine.set(&key, request.secret, request.mode) {
         Ok(_) => {}
         Err(Error::KeyNotFound(key)) => {
             return ErrorResponse::KeyNotFound { file: path, key }.into()
@@ -525,7 +525,9 @@ mod tests {
 
         let shrine = {
             let mut shrine = LocalShrine::new().into_clear();
-            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine
+                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .unwrap();
             shrine.close().unwrap()
         };
 
@@ -552,7 +554,9 @@ mod tests {
 
         let shrine = {
             let mut shrine = LocalShrine::new().into_clear();
-            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine
+                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .unwrap();
             shrine.close().unwrap()
         };
 
@@ -574,8 +578,10 @@ mod tests {
 
         let shrine = {
             let mut shrine = LocalShrine::new();
-            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
-            shrine.close("password".to_string()).unwrap()
+            shrine
+                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .unwrap();
+            shrine.close(ShrinePassword::from("password")).unwrap()
         };
 
         let state = State(AgentState::new(
@@ -596,8 +602,10 @@ mod tests {
         let shrine_password = ShrinePassword::from("password");
         let shrine = {
             let mut shrine = LocalShrine::new();
-            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
-            shrine.close("password".to_string()).unwrap()
+            shrine
+                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .unwrap();
+            shrine.close(ShrinePassword::from("password")).unwrap()
         };
 
         let uuid = shrine.uuid();
@@ -627,9 +635,11 @@ mod tests {
 
         let shrine = {
             let mut shrine = LocalShrine::new().into_clear();
-            shrine.set("key", "text".as_bytes(), Mode::Text).unwrap();
             shrine
-                .set("binkey", "bin".as_bytes(), Mode::Binary)
+                .set("key", SecretBytes::from("text".as_bytes()), Mode::Text)
+                .unwrap();
+            shrine
+                .set("binkey", SecretBytes::from("bin".as_bytes()), Mode::Binary)
                 .unwrap();
             shrine.close().unwrap()
         };
@@ -663,7 +673,9 @@ mod tests {
 
         let shrine = {
             let mut shrine = LocalShrine::new().into_clear();
-            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine
+                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .unwrap();
             shrine.close().unwrap()
         };
 
@@ -697,7 +709,9 @@ mod tests {
 
         let shrine = {
             let mut shrine = LocalShrine::new().into_clear();
-            shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+            shrine
+                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .unwrap();
             shrine.close().unwrap()
         };
 
@@ -734,7 +748,9 @@ mod tests {
     #[tokio::test]
     async fn route_get_key_requires_password() {
         let (tx, _) = channel::<()>();
-        let shrine = LocalShrine::new().close("passwors".to_string()).unwrap();
+        let shrine = LocalShrine::new()
+            .close(ShrinePassword::from("password"))
+            .unwrap();
         let state = AgentState::new(MockShrineProvider::new(ClosedShrine::LocalAes(shrine)), tx);
 
         let response = router()
@@ -750,8 +766,10 @@ mod tests {
     async fn route_put_password_then_get_key_then_delete_password() {
         let (tx, _) = channel::<()>();
         let mut shrine = LocalShrine::new();
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
-        let shrine = shrine.close("password".to_string()).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
+        let shrine = shrine.close(ShrinePassword::from("password")).unwrap();
 
         let uuid = shrine.uuid();
         let state = AgentState::new(
@@ -827,7 +845,9 @@ mod tests {
     async fn route_get_key() {
         let (tx, _) = channel::<()>();
         let mut shrine = LocalShrine::new().into_clear();
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
         let shrine = shrine.close().unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
@@ -854,7 +874,9 @@ mod tests {
     async fn route_get_secrets() {
         let (tx, _) = channel::<()>();
         let mut shrine = LocalShrine::new().into_clear();
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
         let shrine = shrine.close().unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
@@ -883,7 +905,9 @@ mod tests {
     async fn route_delete_key() {
         let (tx, _) = channel::<()>();
         let mut shrine = LocalShrine::new().into_clear();
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
         let shrine = shrine.close().unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
@@ -906,7 +930,7 @@ mod tests {
             .shrine_provider
             .load_from_path("")
             .unwrap()
-            .open(|_| "".to_string())
+            .open(|_| ShrinePassword::from(""))
             .unwrap();
 
         let error = shrine.get("key").err().unwrap();
@@ -945,7 +969,7 @@ mod tests {
             .shrine_provider
             .load_from_path("")
             .unwrap()
-            .open(|_| "".to_string())
+            .open(|_| ShrinePassword::from(""))
             .unwrap();
         let secret = shrine.get("key").unwrap();
 

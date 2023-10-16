@@ -1,26 +1,24 @@
 use crate::git::Repository;
 
-use crate::Error;
-use rpassword::prompt_password;
-
 use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
-use crate::values::secret::Mode;
+use crate::utils::Input;
+use crate::Error;
 use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 
 pub fn set<P>(
     mut shrine: OpenShrine<PathBuf>,
     key: &str,
-    value: Option<String>,
+    value: Input,
     path: P,
 ) -> Result<(), Error>
 where
     P: AsRef<Path> + Clone,
     PathBuf: From<P>,
 {
-    let value = value.unwrap_or_else(|| prompt_password("Value: ").unwrap());
+    let (value, mode) = value.get(&format!("Enter `{}` value: ", key))?;
 
-    shrine.set(&format!(".{key}"), value.as_bytes(), Mode::Text)?;
+    shrine.set(&format!(".{key}"), value, mode)?;
 
     let mut repo_path = PathBuf::from(path.clone());
     repo_path.pop();

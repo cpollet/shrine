@@ -24,7 +24,7 @@ pub trait Client: Send + Sync {
 
     fn get_key(&self, path: &str, key: &str) -> Result<Secret, Error>;
 
-    fn set_key(&self, path: &str, key: &str, value: &[u8], mode: Mode) -> Result<(), Error>;
+    fn set_key(&self, path: &str, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error>;
 
     fn delete_key(&self, path: &str, key: &str) -> Result<Vec<Secret>, Error>;
 
@@ -248,7 +248,7 @@ where
         )))
     }
 
-    fn set_key(&self, path: &str, key: &str, value: &[u8], mode: Mode) -> Result<(), Error> {
+    fn set_key(&self, path: &str, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error> {
         self.rt
             .block_on(self.put::<_, Empty>(
                 &format!(
@@ -257,7 +257,7 @@ where
                     urlencoding::encode(key)
                 ),
                 &SetSecretRequest {
-                    secret: SecretBytes::from(value),
+                    secret: value,
                     mode,
                 },
             ))
@@ -311,7 +311,13 @@ impl Client for NoClient {
         unimplemented!()
     }
 
-    fn set_key(&self, _path: &str, _key: &str, _value: Vec<u8>, _mode: Mode) -> Result<(), Error> {
+    fn set_key(
+        &self,
+        _path: &str,
+        _key: &str,
+        _value: SecretBytes,
+        _mode: Mode,
+    ) -> Result<(), Error> {
         unimplemented!()
     }
 
@@ -443,12 +449,23 @@ pub mod mock {
                 .expect(&format!("unexpected get_key(\"{}\", \"{}\")", path, key))
         }
 
-        fn set_key(&self, path: &str, key: &str, value: &[u8], mode: Mode) -> Result<(), Error> {
+        fn set_key(
+            &self,
+            path: &str,
+            key: &str,
+            value: SecretBytes,
+            mode: Mode,
+        ) -> Result<(), Error> {
             self.set_keys
                 .lock()
                 .unwrap()
                 .borrow_mut()
-                .remove(&(path.to_string(), key.to_string(), value.to_vec(), mode))
+                .remove(&(
+                    path.to_string(),
+                    key.to_string(),
+                    value.expose_secret_as_bytes().to_vec(),
+                    mode,
+                ))
                 .expect(&format!(
                     "unexpected set_key(\"{}\", \"{}\", {:?}, {})",
                     path, key, value, mode
@@ -546,7 +563,12 @@ mod tests {
         let client = HttpClient::<TcpClient>::new(server.base_url());
 
         client
-            .set_key("path", "key", "value".as_bytes(), Mode::Binary)
+            .set_key(
+                "path",
+                "key",
+                SecretBytes::from("value".as_bytes()),
+                Mode::Binary,
+            )
             .expect("Ok(()) expected");
 
         mock.assert();

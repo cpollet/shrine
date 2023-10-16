@@ -1,21 +1,20 @@
 use crate::agent::client::Client;
 use crate::shrine::encryption::EncryptionAlgorithm;
-use crate::shrine::local::{
-    Aes, Clear, Closed, LoadedShrine, LocalShrine, NoPassword, Open, Password,
-};
+use crate::shrine::local::{Aes, Clear, Closed, LoadedShrine, LocalShrine, NoPassword, Open};
 use crate::shrine::remote::RemoteShrine;
 use crate::shrine::serialization::SerializationFormat;
+use crate::values::bytes::SecretBytes;
+use crate::values::password::ShrinePassword;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-mod holder;
-mod metadata;
-// todo convert to private
 pub mod encryption;
+mod holder;
 pub mod local;
+mod metadata;
 mod remote;
 pub mod serialization;
 
@@ -49,8 +48,7 @@ pub trait QueryClosed {
 pub trait QueryOpen: QueryClosed {
     type Error: Debug;
 
-    // todo use SecretBytes
-    fn set(&mut self, key: &str, value: &[u8], mode: Mode) -> Result<(), Self::Error>;
+    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error>;
 
     fn get(&self, key: &str) -> Result<&Secret, Self::Error>;
 
@@ -72,7 +70,7 @@ pub enum ClosedShrine<L> {
 impl<L> ClosedShrine<L> {
     pub fn open<F>(self, password_provider: F) -> Result<OpenShrine<L>, Error>
     where
-        F: Fn(Uuid) -> String,
+        F: FnOnce(Uuid) -> ShrinePassword,
     {
         Ok(match self {
             ClosedShrine::LocalClear(s) => s.open().map(OpenShrine::LocalClear)?,
@@ -130,7 +128,7 @@ impl From<LoadedShrine> for ClosedShrine<PathBuf> {
 
 pub enum OpenShrine<L> {
     LocalClear(LocalShrine<Open, Clear, L>),
-    LocalAes(LocalShrine<Open, Aes<Password>, L>),
+    LocalAes(LocalShrine<Open, Aes<ShrinePassword>, L>),
     Remote(RemoteShrine),
 }
 
@@ -182,7 +180,7 @@ impl<L> QueryOpen for OpenShrine<L> {
     type Error = Error;
 
     // todo use SecretBytes
-    fn set(&mut self, key: &str, value: &[u8], mode: Mode) -> Result<(), Self::Error> {
+    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error> {
         match self {
             OpenShrine::LocalClear(s) => s.set(key, value, mode),
             OpenShrine::LocalAes(s) => s.set(key, value, mode),

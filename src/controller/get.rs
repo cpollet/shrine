@@ -56,15 +56,20 @@ impl Encoding {
 mod tests {
     use super::*;
     use crate::shrine::local::LocalShrine;
+    use crate::values::bytes::SecretBytes;
 
     #[test]
     fn get_auto() {
         let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
         shrine
-            .set("txt_key", "value".as_bytes(), Mode::Text)
+            .set("txt_key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();
         shrine
-            .set("bin_key", "value".as_bytes(), Mode::Binary)
+            .set(
+                "bin_key",
+                SecretBytes::from("value".as_bytes()),
+                Mode::Binary,
+            )
             .unwrap();
 
         let mut out = Vec::<u8>::new();
@@ -80,10 +85,14 @@ mod tests {
     fn get_raw() {
         let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
         shrine
-            .set("txt_key", "value".as_bytes(), Mode::Text)
+            .set("txt_key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();
         shrine
-            .set("bin_key", "value".as_bytes(), Mode::Binary)
+            .set(
+                "bin_key",
+                SecretBytes::from("value".as_bytes()),
+                Mode::Binary,
+            )
             .unwrap();
 
         let mut out = Vec::<u8>::new();
@@ -99,10 +108,14 @@ mod tests {
     fn get_base64() {
         let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
         shrine
-            .set("txt_key", "value".as_bytes(), Mode::Text)
+            .set("txt_key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();
         shrine
-            .set("bin_key", "value".as_bytes(), Mode::Binary)
+            .set(
+                "bin_key",
+                SecretBytes::from("value".as_bytes()),
+                Mode::Binary,
+            )
             .unwrap();
 
         let mut out = Vec::<u8>::new();

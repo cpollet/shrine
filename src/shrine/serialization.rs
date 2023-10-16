@@ -19,7 +19,6 @@ pub enum SerializationFormat {
 }
 
 impl SerializationFormat {
-    // todo revert to private
     pub fn serializer(&self) -> Box<dyn SerDe<Secrets>> {
         match self {
             SerializationFormat::Bson => Box::new(BsonSerDe::new()),

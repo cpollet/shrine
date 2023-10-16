@@ -3,6 +3,7 @@ use crate::shrine::holder::Holder;
 use crate::shrine::metadata::Metadata;
 use crate::shrine::serialization::SerializationFormat;
 use crate::shrine::{OpenShrine, QueryClosed, QueryOpen, VERSION};
+use crate::values::bytes::SecretBytes;
 use crate::values::password::ShrinePassword;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
@@ -12,8 +13,6 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
-
-// todo move open and closed directly to LocalShrine
 
 pub type Secrets = Holder<Secret>;
 
@@ -30,13 +29,11 @@ impl Debug for Closed {
     }
 }
 
-pub struct Password(String);
-
 #[derive(Clone, Debug)]
 pub struct NoPassword;
 
 #[derive(Debug)]
-pub struct Aes<P = Password> {
+pub struct Aes<P = ShrinePassword> {
     password: P,
 }
 
@@ -61,7 +58,7 @@ pub struct Unknown;
 pub struct Memory;
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
-pub struct LocalShrine<S = Open, E = Aes<Password>, L = PathBuf> {
+pub struct LocalShrine<S = Open, E = Aes<ShrinePassword>, L = PathBuf> {
     /// Always "shrine".
     magic_number: [u8; 6],
     metadata: Metadata,
@@ -200,12 +197,14 @@ impl<L> LocalShrine<Closed, Clear, L> {
 }
 
 impl<L> LocalShrine<Closed, Aes<NoPassword>, L> {
-    // todo change password to ShrinePassword
-    pub fn open(self, password: String) -> Result<LocalShrine<Open, Aes<Password>, L>, Error> {
+    pub fn open(
+        self,
+        password: ShrinePassword,
+    ) -> Result<LocalShrine<Open, Aes<ShrinePassword>, L>, Error> {
         let clear_bytes = self
             .metadata
             .encryption_algorithm()
-            .encryptor(&ShrinePassword::from(password.clone()), None)
+            .encryptor(&password, None)
             .decrypt(&self.payload.0)?;
 
         let secrets = self
@@ -218,9 +217,7 @@ impl<L> LocalShrine<Closed, Aes<NoPassword>, L> {
             magic_number: self.magic_number,
             metadata: self.metadata,
             payload: Open { secrets },
-            encryption: Aes {
-                password: Password(password),
-            },
+            encryption: Aes { password },
             location: self.location,
         })
     }
@@ -245,23 +242,20 @@ impl<E, L> LocalShrine<Open, E, L> {
 impl<E, L> QueryOpen for LocalShrine<Open, E, L> {
     type Error = Error;
 
-    fn set(&mut self, key: &str, value: &[u8], mode: Mode) -> Result<(), Self::Error> {
+    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error> {
         if let Some(key) = key.strip_prefix('.') {
             return self
                 .payload
                 .secrets
-                .set_private(key, Secret::new(value.into(), mode));
+                .set_private(key, Secret::new(value, mode));
         }
 
         match self.payload.secrets.get_mut(key) {
             Ok(secret) => {
-                secret.with_data(value.into(), mode);
+                secret.update_with(value, mode);
                 Ok(())
             }
-            Err(Error::KeyNotFound(_)) => self
-                .payload
-                .secrets
-                .set(key, Secret::new(value.into(), mode)),
+            Err(Error::KeyNotFound(_)) => self.payload.secrets.set(key, Secret::new(value, mode)),
             Err(e) => Err(e),
         }
     }
@@ -317,26 +311,30 @@ impl<T, L> LocalShrine<Open, Aes<T>, L> {
         }
     }
 
-    pub fn set_password(self, password: String) -> LocalShrine<Open, Aes<Password>, L> {
+    pub fn set_password(
+        self,
+        password: ShrinePassword,
+    ) -> LocalShrine<Open, Aes<ShrinePassword>, L> {
         LocalShrine {
             magic_number: self.magic_number,
             metadata: self.metadata,
             payload: self.payload,
-            encryption: Aes {
-                password: Password(password),
-            },
+            encryption: Aes { password },
             location: self.location,
         }
     }
 }
 
 impl<L> LocalShrine<Open, Aes<NoPassword>, L> {
-    pub fn close(self, password: String) -> Result<LocalShrine<Closed, Aes<NoPassword>, L>, Error> {
+    pub fn close(
+        self,
+        password: ShrinePassword,
+    ) -> Result<LocalShrine<Closed, Aes<NoPassword>, L>, Error> {
         self.set_password(password).close()
     }
 }
 
-impl<L> LocalShrine<Open, Aes<Password>, L> {
+impl<L> LocalShrine<Open, Aes<ShrinePassword>, L> {
     pub fn close(self) -> Result<LocalShrine<Closed, Aes<NoPassword>, L>, Error> {
         let clear_bytes = self
             .metadata
@@ -344,12 +342,10 @@ impl<L> LocalShrine<Open, Aes<Password>, L> {
             .serializer()
             .serialize(&self.payload.secrets)?;
 
-        let password = ShrinePassword::from(self.encryption.password.0);
-
         let cipher_bytes = self
             .metadata
             .encryption_algorithm()
-            .encryptor(&password, None)
+            .encryptor(&self.encryption.password, None)
             .encrypt(&clear_bytes)?;
 
         Ok(LocalShrine {
@@ -387,15 +383,16 @@ impl<L> LocalShrine<Open, Clear, L> {
         }
     }
 
-    pub fn into_aes_with_password(self, password: String) -> LocalShrine<Open, Aes<Password>, L> {
+    pub fn into_aes_with_password(
+        self,
+        password: ShrinePassword,
+    ) -> LocalShrine<Open, Aes<ShrinePassword>, L> {
         let shrine = self.into_aes();
         LocalShrine {
             magic_number: shrine.magic_number,
             metadata: shrine.metadata,
             payload: shrine.payload,
-            encryption: Aes {
-                password: Password(password),
-            },
+            encryption: Aes { password },
             location: shrine.location,
         }
     }
@@ -573,12 +570,16 @@ mod tests {
     fn set_get() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
         let secret = shrine.get("key").unwrap();
         assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes());
         assert_eq!(secret.mode(), Mode::Text);
 
-        shrine.set("key", "bin".as_bytes(), Mode::Binary).unwrap();
+        shrine
+            .set("key", SecretBytes::from("bin".as_bytes()), Mode::Binary)
+            .unwrap();
         let secret = shrine.get("key").unwrap();
         assert_eq!(secret.value().expose_secret_as_bytes(), "bin".as_bytes());
         assert_eq!(secret.mode(), Mode::Binary);
@@ -588,12 +589,16 @@ mod tests {
     fn set_get_private() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set(".key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set(".key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
         let secret = shrine.get(".key").unwrap();
         assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes());
         assert_eq!(secret.mode(), Mode::Text);
 
-        shrine.set(".key", "bin".as_bytes(), Mode::Binary).unwrap();
+        shrine
+            .set(".key", SecretBytes::from("bin".as_bytes()), Mode::Binary)
+            .unwrap();
         let secret = shrine.get(".key").unwrap();
         assert_eq!(secret.value().expose_secret_as_bytes(), "bin".as_bytes());
         assert_eq!(secret.mode(), Mode::Binary);
@@ -603,7 +608,9 @@ mod tests {
     fn rm() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
         assert!(shrine.rm("key"));
 
         let err = shrine.get("key").unwrap_err();
@@ -620,7 +627,8 @@ mod tests {
     #[test]
     fn mv() {
         let mut src = LocalShrine::new();
-        src.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        src.set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let mut dst = OpenShrine::LocalClear(LocalShrine::new().into_clear());
         src.mv(&mut dst);
@@ -634,7 +642,9 @@ mod tests {
     fn keys() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let keys = shrine.keys();
         assert_eq!(keys.len(), 1);
@@ -645,7 +655,9 @@ mod tests {
     fn keys_private() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set(".key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set(".key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let keys = shrine.keys_private();
         assert_eq!(keys.len(), 1);
@@ -656,7 +668,9 @@ mod tests {
     fn clear_close_open() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let shrine = shrine.into_clear();
 
@@ -674,11 +688,13 @@ mod tests {
     fn aes_close_open() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
-        let shrine = shrine.close("password".to_string()).unwrap();
+        let shrine = shrine.close(ShrinePassword::from("password")).unwrap();
 
-        let shrine = shrine.open("password".to_string()).unwrap();
+        let shrine = shrine.open(ShrinePassword::from("password")).unwrap();
 
         assert_eq!(
             shrine.get("key").unwrap().value().expose_secret_as_bytes(),
@@ -690,13 +706,15 @@ mod tests {
     fn aes_close_open_wrong_password() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
-        let shrine = shrine.set_password("password".to_string());
+        let shrine = shrine.set_password(ShrinePassword::from("password"));
 
         let shrine = shrine.close().unwrap();
 
-        match shrine.open("wrong".to_string()) {
+        match shrine.open(ShrinePassword::from("wrong")) {
             Err(Error::CryptoRead) => (),
             _ => panic!("Expected Err(Error::CryptoRead)"),
         }
@@ -706,7 +724,9 @@ mod tests {
     fn clear_try_to_bytes_try_from_bytes() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let shrine = shrine.into_clear().close().unwrap();
 
@@ -727,18 +747,20 @@ mod tests {
     fn aes_try_to_bytes_try_from_bytes() {
         let mut shrine = LocalShrine::new();
 
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let shrine = shrine
             .into_clear()
-            .into_aes_with_password("password".to_string())
+            .into_aes_with_password(ShrinePassword::from("password"))
             .close()
             .unwrap();
 
         let bytes = shrine.try_to_bytes().unwrap();
 
         let shrine = match InMemoryShrine::try_from_bytes(&bytes).unwrap() {
-            InMemoryShrine::Aes(s) => s.open("password".to_string()).unwrap(),
+            InMemoryShrine::Aes(s) => s.open(ShrinePassword::from("password")).unwrap(),
             _ => panic!("Expected aes shrine"),
         };
 
@@ -755,15 +777,17 @@ mod tests {
         path.push("shrine");
 
         let mut shrine = LocalShrine::new();
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
-        let shrine = shrine.close("password".to_string()).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
+        let shrine = shrine.close(ShrinePassword::from("password")).unwrap();
         shrine.write_to(&path).unwrap();
 
         let shrine = LoadedShrine::try_from_path(&path).unwrap();
 
         let shrine = match shrine {
             LoadedShrine::Clear(_) => panic!("AES shrine expected"),
-            LoadedShrine::Aes(s) => s.open("password".to_string()).unwrap(),
+            LoadedShrine::Aes(s) => s.open(ShrinePassword::from("password")).unwrap(),
         };
 
         assert_eq!(

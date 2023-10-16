@@ -1,9 +1,13 @@
+use crate::values::bytes::SecretBytes;
 use crate::values::password::ShrinePassword;
+use crate::values::secret::Mode;
 use crate::Error;
 use csv::ReaderBuilder;
+use rpassword::prompt_password;
 use serde::Deserialize;
 use std::env;
 use std::ffi::OsString;
+use std::io::Read;
 use std::ops::BitAnd;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -16,6 +20,29 @@ static VALID_FILE_PERMISSION: u32 = 0o600;
 struct Row {
     uuid: String,
     password: String,
+}
+
+pub struct Input {
+    pub read_from_stdin: bool,
+    pub mode: Mode,
+    pub value: Option<SecretBytes>,
+}
+
+impl Input {
+    pub fn get(self, prompt: &str) -> Result<(SecretBytes, Mode), Error> {
+        let val = if self.read_from_stdin {
+            let mut input = Vec::new();
+            let stdin = std::io::stdin();
+            let mut handle = stdin.lock();
+            handle.read_to_end(&mut input).map_err(Error::ReadStdIn)?;
+            SecretBytes::from(input)
+        } else {
+            self.value
+                .unwrap_or_else(|| SecretBytes::from(prompt_password(prompt).unwrap()))
+        };
+
+        Ok((val, self.mode))
+    }
 }
 
 pub fn read_password(uuid: Uuid) -> ShrinePassword {

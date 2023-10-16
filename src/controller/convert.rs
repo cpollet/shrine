@@ -27,9 +27,9 @@ where
         _ => {
             let uuid = new_shrine.uuid();
 
-            let password = match &new_password {
-                None => read_password(uuid).expose_secret().to_string(),
-                Some(password) => password.expose_secret().to_string(),
+            let password = match new_password {
+                None => read_password(uuid),
+                Some(password) => password,
             };
 
             OpenShrine::LocalAes(new_shrine.set_password(password))

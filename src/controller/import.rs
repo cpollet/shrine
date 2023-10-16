@@ -4,6 +4,7 @@ use dotenv_parser::parse_dotenv;
 use std::fs::read_to_string;
 
 use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
+use crate::values::bytes::SecretBytes;
 use crate::values::secret::Mode;
 use std::path::{Path, PathBuf};
 
@@ -30,7 +31,11 @@ where
     let prefix = prefix.unwrap_or_default();
 
     for (key, value) in secrets {
-        shrine.set(&format!("{}{}", prefix, key), value.as_bytes(), Mode::Text)?
+        shrine.set(
+            &format!("{}{}", prefix, key),
+            SecretBytes::from(value.as_bytes()),
+            Mode::Text,
+        )?
     }
 
     match shrine.close()? {

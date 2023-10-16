@@ -2,6 +2,7 @@ use crate::agent::client::Client;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::serialization::SerializationFormat;
 use crate::shrine::{OpenShrine, QueryClosed, QueryOpen};
+use crate::values::bytes::SecretBytes;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
 use uuid::Uuid;
@@ -38,7 +39,7 @@ impl QueryClosed for RemoteShrine {
 impl QueryOpen for RemoteShrine {
     type Error = Error;
 
-    fn set(&mut self, key: &str, value: &[u8], mode: Mode) -> Result<(), Self::Error> {
+    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error> {
         self.client.set_key(&self.path, key, value, mode)
     }
 

@@ -1,4 +1,5 @@
 use crate::shrine::QueryOpen;
+use crate::values::bytes::SecretBytes;
 use crate::values::secret::Mode;
 use crate::Error;
 use chrono::Local;
@@ -46,21 +47,21 @@ impl Configuration {
         shrine
             .set(
                 ".git.enabled",
-                self.enabled.to_string().as_bytes(),
+                SecretBytes::from(self.enabled.to_string().as_bytes()),
                 Mode::Text,
             )
             .expect("Could not write .git.enabled");
         shrine
             .set(
                 ".git.commit.auto",
-                self.commit_auto.to_string().as_bytes(),
+                SecretBytes::from(self.commit_auto.to_string().as_bytes()),
                 Mode::Text,
             )
             .expect("Could not write .git.commit.auto");
         shrine
             .set(
                 ".git.push.auto",
-                self.push_auto.to_string().as_bytes(),
+                SecretBytes::from(self.push_auto.to_string().as_bytes()),
                 Mode::Text,
             )
             .expect("Could not write .git.push.auto");

@@ -23,6 +23,7 @@ pub fn rm(mut shrine: OpenShrine<PathBuf>, key: &str) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::shrine::local::{LoadedShrine, LocalShrine};
+    use crate::values::bytes::SecretBytes;
     use crate::values::secret::Mode;
     use tempfile::tempdir;
 
@@ -34,7 +35,9 @@ mod tests {
 
         let mut shrine =
             OpenShrine::LocalClear(LocalShrine::new().into_clear().with_path(path.clone()));
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         super::rm(shrine, "key").unwrap();
 

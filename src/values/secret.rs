@@ -14,7 +14,6 @@ pub struct Secret {
 }
 
 impl Secret {
-    // todo revert to private
     pub fn new(value: SecretBytes, mode: Mode) -> Self {
         Self {
             value,
@@ -53,8 +52,7 @@ impl Secret {
         self.updated_at.as_ref()
     }
 
-    // todo revert to private
-    pub fn with_data(&mut self, data: SecretBytes, mode: Mode) -> &mut Self {
+    pub fn update_with(&mut self, data: SecretBytes, mode: Mode) -> &mut Self {
         self.value = data;
         self.mode = mode;
         self.updated_by = Some(format!("{}@{}", whoami::username(), whoami::hostname()));

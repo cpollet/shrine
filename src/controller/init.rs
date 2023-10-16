@@ -2,6 +2,7 @@ use crate::git::Repository;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::local::LocalShrine;
 use crate::shrine::QueryClosed;
+use crate::values::password::ShrinePassword;
 use crate::{git, Error};
 use std::path::{Path, PathBuf};
 use std::string::ToString;
@@ -17,7 +18,7 @@ pub fn init<P, F>(
 where
     P: AsRef<Path> + Clone,
     PathBuf: From<P>,
-    F: Fn(Uuid) -> String,
+    F: FnOnce(Uuid) -> ShrinePassword,
 {
     if !force && path.as_ref().exists() {
         return Err(Error::FileAlreadyExists(

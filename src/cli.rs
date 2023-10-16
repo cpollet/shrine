@@ -8,11 +8,11 @@ use shrine::controller::info::{info, Fields};
 use shrine::controller::init::init;
 use shrine::controller::ls::ls;
 use shrine::controller::rm::rm;
-use shrine::controller::set;
 use shrine::controller::set::set;
 use shrine::controller::{config, get};
 use shrine::shrine::encryption::EncryptionAlgorithm;
-use shrine::utils::read_password;
+use shrine::utils::{read_password, Input};
+use shrine::values::bytes::SecretBytes;
 use shrine::values::password::ShrinePassword;
 use shrine::values::secret::Mode;
 use shrine::Error;
@@ -276,6 +276,11 @@ fn exec(cli: Args) -> Result<(), Error> {
     }
 
     let password = cli.password.clone().map(ShrinePassword::from);
+    let password_provider = move |uuid| match password {
+        None => read_password(uuid),
+        Some(password) => password,
+    };
+
     let path = {
         let mut path = cli
             .path
@@ -292,20 +297,15 @@ fn exec(cli: Args) -> Result<(), Error> {
                 force,
                 encryption,
                 git,
-            }) = cli.command
+            }) = &cli.command
             {
-                init(
+                return init(
                     file,
-                    force,
+                    *force,
                     encryption.map(|algo| algo.into()),
-                    git,
-                    move |uuid| match &password {
-                        None => read_password(uuid).expose_secret().to_string(),
-                        Some(password) => password.expose_secret().to_string(),
-                    },
-                )?;
-
-                return Ok(());
+                    *git,
+                    password_provider,
+                );
             } else {
                 Err(Error::FileNotFound(file))
             }
@@ -313,33 +313,28 @@ fn exec(cli: Args) -> Result<(), Error> {
         e => e,
     }?;
 
+    if let Some(Commands::Init {
+        force,
+        encryption,
+        git,
+    }) = &cli.command
+    {
+        return init(
+            path,
+            *force,
+            encryption.map(|algo| algo.into()),
+            *git,
+            password_provider,
+        );
+    }
+
     if let Some(Commands::Info { field }) = cli.command {
         return info(&shrine, field.map(Fields::from), &path);
     }
 
-    let shrine = shrine.open({
-        let password = password.clone();
-        move |uuid| match &password {
-            None => read_password(uuid).expose_secret().to_string(),
-            Some(password) => password.expose_secret().to_string(),
-        }
-    })?;
+    let shrine = shrine.open(password_provider)?;
 
     match cli.command {
-        Some(Commands::Init {
-            force,
-            encryption,
-            git,
-        }) => init(
-            path,
-            force,
-            encryption.map(|algo| algo.into()),
-            git,
-            move |uuid| match &password {
-                None => read_password(uuid).expose_secret().to_string(),
-                Some(password) => password.expose_secret().to_string(),
-            },
-        ),
         Some(Commands::Convert {
             change_password,
             new_password,
@@ -360,10 +355,10 @@ fn exec(cli: Args) -> Result<(), Error> {
         }) => set(
             shrine,
             &key,
-            set::Input {
+            Input {
                 read_from_stdin: stdin,
                 mode: mode.to_mode(stdin),
-                value: value.as_deref(),
+                value: value.map(SecretBytes::from),
             },
         ),
         Some(Commands::Get { key, encoding }) => get(&shrine, &key, encoding.into(), &mut stdout()),
@@ -375,10 +370,22 @@ fn exec(cli: Args) -> Result<(), Error> {
         }
         // Some(Commands::Dump { pattern, config }) => dump(shrine_provider, pattern.as_ref(), config),
         Some(Commands::Config { command }) => match command {
-            Some(ConfigCommands::Set { key, value }) => config::set(shrine, &key, value, path),
+            Some(ConfigCommands::Set { key, value }) => config::set(
+                shrine,
+                &key,
+                Input {
+                    read_from_stdin: false,
+                    mode: Mode::Text,
+                    value: value.map(SecretBytes::from),
+                },
+                path,
+            ),
             Some(ConfigCommands::Get { key: _key }) => todo!(), //config::get(shrine_provider, &key),
             _ => panic!(),
         },
+        Some(Commands::Init { .. }) => {
+            unreachable!("this case is treated before getting to this match expression")
+        }
         Some(Commands::Info { .. }) => {
             unreachable!("this case is treated before getting to this match expression")
         }

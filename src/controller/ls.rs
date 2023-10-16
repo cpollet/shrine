@@ -81,6 +81,7 @@ where
 mod tests {
     use super::*;
     use crate::shrine::local::LocalShrine;
+    use crate::values::bytes::SecretBytes;
     use crate::values::secret::Mode;
     // use crate::agent::client::mock::MockClient;
     // use crate::shrine::mocks::MockShrineProvider;
@@ -89,7 +90,9 @@ mod tests {
     #[test]
     fn ls() {
         let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
-        shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
+        shrine
+            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .unwrap();
 
         let mut out = Vec::<u8>::new();
 

@@ -16,7 +16,6 @@ pub enum EncryptionAlgorithm {
 }
 
 impl EncryptionAlgorithm {
-    // todo revert to private
     pub fn encryptor<'pwd>(
         &self,
         password: &'pwd ShrinePassword,
