@@ -5,7 +5,12 @@ use atty::Stream;
 use base64::Engine;
 use std::io::Write;
 
-pub fn get<O>(shrine: &OpenShrine, key: &str, encoding: Encoding, out: &mut O) -> Result<(), Error>
+pub fn get<L, O>(
+    shrine: &OpenShrine<L>,
+    key: &str,
+    encoding: Encoding,
+    out: &mut O,
+) -> Result<(), Error>
 where
     O: Write,
 {

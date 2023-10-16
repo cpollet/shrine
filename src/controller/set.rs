@@ -1,9 +1,9 @@
-use crate::shrine::{OpenShrine, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
 use crate::values::secret::Mode;
 use crate::Error;
 use rpassword::prompt_password;
 use std::io::Read;
-use std::path::Path;
+use std::path::PathBuf;
 
 pub struct Input<'a> {
     pub read_from_stdin: bool,
@@ -11,10 +11,7 @@ pub struct Input<'a> {
     pub value: Option<&'a str>,
 }
 
-pub fn set<P>(mut shrine: OpenShrine, key: &str, input: Input<'_>, path: P) -> Result<(), Error>
-where
-    P: AsRef<Path>,
-{
+pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, input: Input<'_>) -> Result<(), Error> {
     if key.starts_with('.') {
         return Err(Error::KeyNotFound(key.to_string()));
     }
@@ -39,7 +36,11 @@ where
 
     let shrine = shrine.close()?;
 
-    shrine.write_file(path)?;
+    match shrine {
+        ClosedShrine::LocalClear(s) => s.write_file()?,
+        ClosedShrine::LocalAes(s) => s.write_file()?,
+        ClosedShrine::Remote(_) => {}
+    }
 
     // todo git repo
 

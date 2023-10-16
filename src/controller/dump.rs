@@ -3,10 +3,10 @@ use crate::values::secret::Mode;
 use crate::Error;
 use base64::Engine;
 use regex::Regex;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn dump<P>(
-    shrine: &OpenShrine,
+    shrine: &OpenShrine<PathBuf>,
     pattern: Option<&str>,
     private: bool,
     path: P,

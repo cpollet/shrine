@@ -57,17 +57,60 @@ pub struct Clear;
 #[derive(Default)]
 pub struct Unknown;
 
+#[derive(Debug, Clone)]
+pub struct Memory;
+
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
-pub struct LocalShrine<S = Open, E = Aes<Password>> {
+pub struct LocalShrine<S = Open, E = Aes<Password>, L = PathBuf> {
     /// Always "shrine".
     magic_number: [u8; 6],
     metadata: Metadata,
     payload: S,
     #[borsh(skip)]
     encryption: E,
+    #[borsh(skip)]
+    location: L,
 }
 
-impl<T, U> QueryClosed for LocalShrine<T, U> {
+impl LocalShrine<Open, Aes<NoPassword>, Memory> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl<S, E> LocalShrine<S, E, Memory> {
+    pub fn with_path(self, path: PathBuf) -> LocalShrine<S, E, PathBuf> {
+        LocalShrine {
+            magic_number: self.magic_number,
+            metadata: self.metadata,
+            payload: self.payload,
+            encryption: self.encryption,
+            location: path,
+        }
+    }
+}
+
+impl Default for LocalShrine<Open, Aes<NoPassword>, Memory> {
+    fn default() -> Self {
+        Self {
+            magic_number: [b's', b'h', b'r', b'i', b'n', b'e'],
+            metadata: Metadata::V0 {
+                uuid: Uuid::new_v4().as_u128(),
+                encryption_algorithm: EncryptionAlgorithm::Aes,
+                serialization_format: Default::default(),
+            },
+            payload: Open {
+                secrets: Holder::new(),
+            },
+            encryption: Aes {
+                password: NoPassword,
+            },
+            location: Memory,
+        }
+    }
+}
+
+impl<S, E, L> QueryClosed for LocalShrine<S, E, L> {
     fn uuid(&self) -> Uuid {
         self.metadata.uuid()
     }
@@ -85,7 +128,7 @@ impl<T, U> QueryClosed for LocalShrine<T, U> {
     }
 }
 
-impl<T> LocalShrine<Closed, T> {
+impl<E, L> LocalShrine<Closed, E, L> {
     fn try_to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::new();
         self.write(&mut buffer)?;
@@ -99,7 +142,7 @@ impl<T> LocalShrine<Closed, T> {
         self.serialize(writer).map_err(Error::IoWrite)
     }
 
-    pub fn write_file<P>(&self, path: P) -> Result<(), Error>
+    pub fn write_to<P>(&self, path: P) -> Result<(), Error>
     where
         P: AsRef<Path>,
     {
@@ -116,9 +159,16 @@ impl<T> LocalShrine<Closed, T> {
     }
 }
 
-impl<T> Clone for LocalShrine<Closed, T>
+impl<E> LocalShrine<Closed, E, PathBuf> {
+    pub fn write_file(&self) -> Result<(), Error> {
+        self.write_to(&self.location)
+    }
+}
+
+impl<E, L> Clone for LocalShrine<Closed, E, L>
 where
-    T: Clone,
+    E: Clone,
+    L: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -126,12 +176,13 @@ where
             metadata: self.metadata.clone(),
             payload: self.payload.clone(),
             encryption: self.encryption.clone(),
+            location: self.location.clone(),
         }
     }
 }
 
-impl LocalShrine<Closed, Clear> {
-    pub fn open(self) -> Result<LocalShrine<Open, Clear>, Error> {
+impl<L> LocalShrine<Closed, Clear, L> {
+    pub fn open(self) -> Result<LocalShrine<Open, Clear, L>, Error> {
         let secrets = self
             .metadata
             .serialization_format()
@@ -143,13 +194,14 @@ impl LocalShrine<Closed, Clear> {
             metadata: self.metadata,
             payload: Open { secrets },
             encryption: Clear,
+            location: self.location,
         })
     }
 }
 
-impl LocalShrine<Closed, Aes<NoPassword>> {
+impl<L> LocalShrine<Closed, Aes<NoPassword>, L> {
     // todo change password to ShrinePassword
-    pub fn open(self, password: String) -> Result<LocalShrine<Open, Aes<Password>>, Error> {
+    pub fn open(self, password: String) -> Result<LocalShrine<Open, Aes<Password>, L>, Error> {
         let clear_bytes = self
             .metadata
             .encryption_algorithm()
@@ -169,11 +221,12 @@ impl LocalShrine<Closed, Aes<NoPassword>> {
             encryption: Aes {
                 password: Password(password),
             },
+            location: self.location,
         })
     }
 }
 
-impl<T> LocalShrine<Open, T> {
+impl<E, L> LocalShrine<Open, E, L> {
     pub fn with_serialization_format(&mut self, format: SerializationFormat) {
         self.metadata = match self.metadata {
             Metadata::V0 {
@@ -189,7 +242,7 @@ impl<T> LocalShrine<Open, T> {
     }
 }
 
-impl<T> QueryOpen for LocalShrine<Open, T> {
+impl<E, L> QueryOpen for LocalShrine<Open, E, L> {
     type Error = Error;
 
     fn set(&mut self, key: &str, value: &[u8], mode: Mode) -> Result<(), Self::Error> {
@@ -224,7 +277,7 @@ impl<T> QueryOpen for LocalShrine<Open, T> {
         self.payload.secrets.remove(key)
     }
 
-    fn mv(self, other: &mut OpenShrine) {
+    fn mv<T>(self, other: &mut OpenShrine<T>) {
         match other {
             OpenShrine::LocalClear(s) => s.payload = self.payload,
             OpenShrine::LocalAes(s) => s.payload = self.payload,
@@ -243,8 +296,8 @@ impl<T> QueryOpen for LocalShrine<Open, T> {
     }
 }
 
-impl<T> LocalShrine<Open, Aes<T>> {
-    pub fn into_clear(self) -> LocalShrine<Open, Clear> {
+impl<T, L> LocalShrine<Open, Aes<T>, L> {
+    pub fn into_clear(self) -> LocalShrine<Open, Clear, L> {
         LocalShrine {
             magic_number: self.magic_number,
             metadata: match self.metadata {
@@ -260,10 +313,11 @@ impl<T> LocalShrine<Open, Aes<T>> {
             },
             payload: self.payload,
             encryption: Clear,
+            location: self.location,
         }
     }
 
-    pub fn set_password(self, password: String) -> LocalShrine<Open, Aes<Password>> {
+    pub fn set_password(self, password: String) -> LocalShrine<Open, Aes<Password>, L> {
         LocalShrine {
             magic_number: self.magic_number,
             metadata: self.metadata,
@@ -271,41 +325,19 @@ impl<T> LocalShrine<Open, Aes<T>> {
             encryption: Aes {
                 password: Password(password),
             },
+            location: self.location,
         }
     }
 }
 
-impl LocalShrine<Open, Aes<NoPassword>> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn close(self, password: String) -> Result<LocalShrine<Closed, Aes<NoPassword>>, Error> {
+impl<L> LocalShrine<Open, Aes<NoPassword>, L> {
+    pub fn close(self, password: String) -> Result<LocalShrine<Closed, Aes<NoPassword>, L>, Error> {
         self.set_password(password).close()
     }
 }
 
-impl Default for LocalShrine<Open, Aes<NoPassword>> {
-    fn default() -> Self {
-        Self {
-            magic_number: [b's', b'h', b'r', b'i', b'n', b'e'],
-            metadata: Metadata::V0 {
-                uuid: Uuid::new_v4().as_u128(),
-                encryption_algorithm: EncryptionAlgorithm::Aes,
-                serialization_format: Default::default(),
-            },
-            payload: Open {
-                secrets: Holder::new(),
-            },
-            encryption: Aes {
-                password: NoPassword,
-            },
-        }
-    }
-}
-
-impl LocalShrine<Open, Aes<Password>> {
-    pub fn close(self) -> Result<LocalShrine<Closed, Aes<NoPassword>>, Error> {
+impl<L> LocalShrine<Open, Aes<Password>, L> {
+    pub fn close(self) -> Result<LocalShrine<Closed, Aes<NoPassword>, L>, Error> {
         let clear_bytes = self
             .metadata
             .serialization_format()
@@ -327,12 +359,13 @@ impl LocalShrine<Open, Aes<Password>> {
             encryption: Aes {
                 password: NoPassword,
             },
+            location: self.location,
         })
     }
 }
 
-impl LocalShrine<Open, Clear> {
-    pub fn into_aes(self) -> LocalShrine<Open, Aes<NoPassword>> {
+impl<L> LocalShrine<Open, Clear, L> {
+    pub fn into_aes(self) -> LocalShrine<Open, Aes<NoPassword>, L> {
         LocalShrine {
             magic_number: self.magic_number,
             metadata: match self.metadata {
@@ -350,10 +383,11 @@ impl LocalShrine<Open, Clear> {
             encryption: Aes {
                 password: NoPassword,
             },
+            location: self.location,
         }
     }
 
-    pub fn into_aes_with_password(self, password: String) -> LocalShrine<Open, Aes<Password>> {
+    pub fn into_aes_with_password(self, password: String) -> LocalShrine<Open, Aes<Password>, L> {
         let shrine = self.into_aes();
         LocalShrine {
             magic_number: shrine.magic_number,
@@ -362,10 +396,11 @@ impl LocalShrine<Open, Clear> {
             encryption: Aes {
                 password: Password(password),
             },
+            location: shrine.location,
         }
     }
 
-    pub fn close(self) -> Result<LocalShrine<Closed, Clear>, Error> {
+    pub fn close(self) -> Result<LocalShrine<Closed, Clear, L>, Error> {
         let bytes = self
             .metadata
             .serialization_format()
@@ -377,14 +412,15 @@ impl LocalShrine<Open, Clear> {
             metadata: self.metadata,
             payload: Closed(bytes),
             encryption: Clear,
+            location: self.location,
         })
     }
 }
 
 #[derive(Debug)]
 pub enum LoadedShrine {
-    Clear(LocalShrine<Closed, Clear>),
-    Aes(LocalShrine<Closed, Aes<NoPassword>>),
+    Clear(LocalShrine<Closed, Clear, PathBuf>),
+    Aes(LocalShrine<Closed, Aes<NoPassword>, PathBuf>),
 }
 
 impl LoadedShrine {
@@ -404,9 +440,34 @@ impl LoadedShrine {
             bytes
         };
 
-        Self::try_from_bytes(&bytes)
-    }
+        let shrine = InMemoryShrine::try_from_bytes(&bytes)?;
 
+        Ok(match shrine {
+            InMemoryShrine::Clear(s) => LoadedShrine::Clear(LocalShrine {
+                magic_number: s.magic_number,
+                metadata: s.metadata,
+                payload: s.payload,
+                encryption: s.encryption,
+                location: path.as_ref().to_path_buf(),
+            }),
+            InMemoryShrine::Aes(s) => LoadedShrine::Aes(LocalShrine {
+                magic_number: s.magic_number,
+                metadata: s.metadata,
+                payload: s.payload,
+                encryption: s.encryption,
+                location: path.as_ref().to_path_buf(),
+            }),
+        })
+    }
+}
+
+#[derive(Debug)]
+enum InMemoryShrine {
+    Clear(LocalShrine<Closed, Clear, Memory>),
+    Aes(LocalShrine<Closed, Aes<NoPassword>, Memory>),
+}
+
+impl InMemoryShrine {
     /// Read a shrine from a byte slice.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, Error> {
         if bytes.len() < 6 || &bytes[0..6] != "shrine".as_bytes() {
@@ -425,19 +486,21 @@ impl LoadedShrine {
                 encryption_algorithm,
                 ..
             } => match encryption_algorithm {
-                EncryptionAlgorithm::Aes => LoadedShrine::Aes(LocalShrine {
+                EncryptionAlgorithm::Aes => InMemoryShrine::Aes(LocalShrine {
                     magic_number: shrine.magic_number,
                     metadata: shrine.metadata,
                     payload: shrine.payload,
                     encryption: Aes {
                         password: NoPassword,
                     },
+                    location: Memory,
                 }),
-                EncryptionAlgorithm::Plain => LoadedShrine::Clear(LocalShrine {
+                EncryptionAlgorithm::Plain => InMemoryShrine::Clear(LocalShrine {
                     magic_number: shrine.magic_number,
                     metadata: shrine.metadata,
                     payload: shrine.payload,
                     encryption: Clear,
+                    location: Memory,
                 }),
             },
         })
@@ -649,8 +712,8 @@ mod tests {
 
         let bytes = shrine.try_to_bytes().unwrap();
 
-        let shrine = match LoadedShrine::try_from_bytes(&bytes).unwrap() {
-            LoadedShrine::Clear(s) => s.open().unwrap(),
+        let shrine = match InMemoryShrine::try_from_bytes(&bytes).unwrap() {
+            InMemoryShrine::Clear(s) => s.open().unwrap(),
             _ => panic!("Expected clear shrine"),
         };
 
@@ -674,8 +737,8 @@ mod tests {
 
         let bytes = shrine.try_to_bytes().unwrap();
 
-        let shrine = match LoadedShrine::try_from_bytes(&bytes).unwrap() {
-            LoadedShrine::Aes(s) => s.open("password".to_string()).unwrap(),
+        let shrine = match InMemoryShrine::try_from_bytes(&bytes).unwrap() {
+            InMemoryShrine::Aes(s) => s.open("password".to_string()).unwrap(),
             _ => panic!("Expected aes shrine"),
         };
 
@@ -694,7 +757,7 @@ mod tests {
         let mut shrine = LocalShrine::new();
         shrine.set("key", "value".as_bytes(), Mode::Text).unwrap();
         let shrine = shrine.close("password".to_string()).unwrap();
-        shrine.write_file(&path).unwrap();
+        shrine.write_to(&path).unwrap();
 
         let shrine = LoadedShrine::try_from_path(&path).unwrap();
 
@@ -719,7 +782,7 @@ mod tests {
             .unwrap();
         bytes[0] += 1;
 
-        match LoadedShrine::try_from_bytes(&bytes).unwrap_err() {
+        match InMemoryShrine::try_from_bytes(&bytes).unwrap_err() {
             Error::Read() => {}
             e => panic!("expected Error::Read, got {:?}", e),
         }
@@ -735,7 +798,7 @@ mod tests {
             .unwrap();
         bytes[6] += 1;
 
-        match LoadedShrine::try_from_bytes(&bytes).unwrap_err() {
+        match InMemoryShrine::try_from_bytes(&bytes).unwrap_err() {
             Error::UnsupportedVersion(v) => {
                 assert_eq!(v, 1)
             }

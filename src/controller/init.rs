@@ -37,14 +37,14 @@ where
 
     match encryption {
         Some(EncryptionAlgorithm::Plain) => {
-            shrine.into_clear().close()?.write_file(&path)?;
+            shrine.into_clear().close()?.write_to(&path)?;
         }
         _ => {
             let uuid = shrine.uuid();
             shrine
                 .set_password(password_provider(uuid))
                 .close()?
-                .write_file(&path)?;
+                .write_to(&path)?;
         }
     };
 

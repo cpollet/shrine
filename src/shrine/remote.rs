@@ -50,7 +50,7 @@ impl QueryOpen for RemoteShrine {
         todo!()
     }
 
-    fn mv(self, _other: &mut OpenShrine) {
+    fn mv<T>(self, _other: &mut OpenShrine<T>) {
         todo!()
     }
 

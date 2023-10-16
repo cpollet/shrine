@@ -3,18 +3,17 @@ use dotenv_parser::parse_dotenv;
 
 use std::fs::read_to_string;
 
-use crate::shrine::{OpenShrine, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
 use crate::values::secret::Mode;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // https://crates.io/crates/dotenv-parser
 // todo compliant with https://hexdocs.pm/dotenvy/dotenv-file-format.html
 
 pub fn import<P>(
-    mut shrine: OpenShrine,
+    mut shrine: OpenShrine<PathBuf>,
     file: P,
     prefix: Option<&str>,
-    path: P,
 ) -> Result<(), Error>
 where
     P: AsRef<Path>,
@@ -34,7 +33,11 @@ where
         shrine.set(&format!("{}{}", prefix, key), value.as_bytes(), Mode::Text)?
     }
 
-    shrine.close()?.write_file(&path)?;
+    match shrine.close()? {
+        ClosedShrine::LocalClear(s) => s.write_file()?,
+        ClosedShrine::LocalAes(s) => s.write_file()?,
+        ClosedShrine::Remote(_) => {}
+    }
 
     // todo git
 

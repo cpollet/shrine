@@ -1,13 +1,13 @@
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::local::LocalShrine;
-use crate::shrine::{OpenShrine, QueryClosed, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine, QueryClosed, QueryOpen};
 use crate::utils::read_password;
 use crate::values::password::ShrinePassword;
 use crate::Error;
 use std::path::Path;
 
-pub fn convert<P>(
-    shrine: OpenShrine,
+pub fn convert<P, L>(
+    shrine: OpenShrine<L>,
     change_password: bool,
     new_password: Option<ShrinePassword>,
     encryption: Option<EncryptionAlgorithm>,
@@ -21,7 +21,7 @@ where
         return Ok(());
     }
 
-    let new_shrine = LocalShrine::new();
+    let new_shrine = LocalShrine::new().with_path(path.as_ref().to_path_buf());
     let mut new_shrine = match encryption {
         Some(EncryptionAlgorithm::Plain) => OpenShrine::LocalClear(new_shrine.into_clear()),
         _ => {
@@ -38,7 +38,11 @@ where
 
     shrine.mv(&mut new_shrine);
 
-    new_shrine.close()?.write_file(&path)?;
+    match new_shrine.close()? {
+        ClosedShrine::LocalClear(s) => s.write_file()?,
+        ClosedShrine::LocalAes(s) => s.write_file()?,
+        ClosedShrine::Remote(_) => {}
+    }
 
     // todo git
 

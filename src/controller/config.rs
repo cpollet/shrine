@@ -3,13 +3,13 @@ use crate::git::Repository;
 use crate::Error;
 use rpassword::prompt_password;
 
-use crate::shrine::{OpenShrine, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
 use crate::values::secret::Mode;
 use std::io::{stdout, Write};
 use std::path::{Path, PathBuf};
 
 pub fn set<P>(
-    mut shrine: OpenShrine,
+    mut shrine: OpenShrine<PathBuf>,
     key: &str,
     value: Option<String>,
     path: P,
@@ -27,7 +27,11 @@ where
 
     let repository = Repository::new(repo_path, &shrine);
 
-    shrine.close()?.write_file(path)?;
+    match shrine.close()? {
+        ClosedShrine::LocalClear(s) => s.write_file()?,
+        ClosedShrine::LocalAes(s) => s.write_file()?,
+        ClosedShrine::Remote(_) => {}
+    }
 
     if let Some(repository) = repository {
         if repository.commit_auto() {
@@ -40,7 +44,7 @@ where
     Ok(())
 }
 
-pub fn get(shrine: &OpenShrine, key: &str) -> Result<(), Error> {
+pub fn get<L>(shrine: &OpenShrine<L>, key: &str) -> Result<(), Error> {
     let secret = shrine.get(key);
     let _ = stdout().write_all(secret.unwrap().value().expose_secret_as_bytes());
     Ok(())

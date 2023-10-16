@@ -1,6 +1,6 @@
 use crate::shrine::{ClosedShrine, QueryClosed};
 use crate::Error;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub enum Fields {
     Version,
@@ -9,7 +9,7 @@ pub enum Fields {
     Encryption,
 }
 
-pub fn info<P>(shrine: &ClosedShrine, field: Option<Fields>, path: P) -> Result<(), Error>
+pub fn info<P>(shrine: &ClosedShrine<PathBuf>, field: Option<Fields>, path: P) -> Result<(), Error>
 where
     P: AsRef<Path>,
 {

@@ -4,7 +4,7 @@ use crate::Error;
 use regex::Regex;
 use std::io::Write;
 
-pub fn ls<O>(shrine: &OpenShrine, pattern: Option<&str>, out: &mut O) -> Result<(), Error>
+pub fn ls<L, O>(shrine: &OpenShrine<L>, pattern: Option<&str>, out: &mut O) -> Result<(), Error>
 where
     O: Write,
 {

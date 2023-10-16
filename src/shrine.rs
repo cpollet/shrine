@@ -8,7 +8,7 @@ use crate::shrine::serialization::SerializationFormat;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
 use std::fmt::Debug;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 mod holder;
@@ -22,7 +22,7 @@ pub mod serialization;
 /// Max supported file version
 pub const VERSION: u8 = 0;
 
-pub fn new<P>(client: Box<dyn Client>, path: P) -> Result<ClosedShrine, Error>
+pub fn new<P>(client: Box<dyn Client>, path: P) -> Result<ClosedShrine<PathBuf>, Error>
 where
     P: AsRef<Path>,
 {
@@ -56,21 +56,21 @@ pub trait QueryOpen: QueryClosed {
 
     fn rm(&mut self, key: &str) -> bool;
 
-    fn mv(self, other: &mut OpenShrine);
+    fn mv<T>(self, other: &mut OpenShrine<T>);
 
     fn keys(&self) -> Vec<String>;
 
     fn keys_private(&self) -> Vec<String>;
 }
 
-pub enum ClosedShrine {
-    LocalClear(LocalShrine<Closed, Clear>),
-    LocalAes(LocalShrine<Closed, Aes<NoPassword>>),
+pub enum ClosedShrine<L> {
+    LocalClear(LocalShrine<Closed, Clear, L>),
+    LocalAes(LocalShrine<Closed, Aes<NoPassword>, L>),
     Remote(RemoteShrine),
 }
 
-impl ClosedShrine {
-    pub fn open<F>(self, password_provider: F) -> Result<OpenShrine, Error>
+impl<L> ClosedShrine<L> {
+    pub fn open<F>(self, password_provider: F) -> Result<OpenShrine<L>, Error>
     where
         F: Fn(Uuid) -> String,
     {
@@ -83,20 +83,9 @@ impl ClosedShrine {
             ClosedShrine::Remote(s) => OpenShrine::Remote(s),
         })
     }
-
-    pub fn write_file<P>(&self, path: P) -> Result<(), Error>
-    where
-        P: AsRef<Path>,
-    {
-        match self {
-            ClosedShrine::LocalClear(s) => s.write_file(path),
-            ClosedShrine::LocalAes(s) => s.write_file(path),
-            ClosedShrine::Remote(_) => Ok(()),
-        }
-    }
 }
 
-impl QueryClosed for ClosedShrine {
+impl<L> QueryClosed for ClosedShrine<L> {
     fn uuid(&self) -> Uuid {
         match self {
             ClosedShrine::LocalClear(s) => s.uuid(),
@@ -130,7 +119,7 @@ impl QueryClosed for ClosedShrine {
     }
 }
 
-impl From<LoadedShrine> for ClosedShrine {
+impl From<LoadedShrine> for ClosedShrine<PathBuf> {
     fn from(value: LoadedShrine) -> Self {
         match value {
             LoadedShrine::Clear(s) => ClosedShrine::LocalClear(s),
@@ -139,14 +128,14 @@ impl From<LoadedShrine> for ClosedShrine {
     }
 }
 
-pub enum OpenShrine {
-    LocalClear(LocalShrine<Open, Clear>),
-    LocalAes(LocalShrine<Open, Aes<Password>>),
+pub enum OpenShrine<L> {
+    LocalClear(LocalShrine<Open, Clear, L>),
+    LocalAes(LocalShrine<Open, Aes<Password>, L>),
     Remote(RemoteShrine),
 }
 
-impl OpenShrine {
-    pub fn close(self) -> Result<ClosedShrine, Error> {
+impl<L> OpenShrine<L> {
+    pub fn close(self) -> Result<ClosedShrine<L>, Error> {
         Ok(match self {
             OpenShrine::LocalClear(s) => ClosedShrine::LocalClear(s.close()?),
             OpenShrine::LocalAes(s) => ClosedShrine::LocalAes(s.close()?),
@@ -155,7 +144,7 @@ impl OpenShrine {
     }
 }
 
-impl QueryClosed for OpenShrine {
+impl<L> QueryClosed for OpenShrine<L> {
     fn uuid(&self) -> Uuid {
         match self {
             OpenShrine::LocalClear(s) => s.uuid(),
@@ -189,7 +178,7 @@ impl QueryClosed for OpenShrine {
     }
 }
 
-impl QueryOpen for OpenShrine {
+impl<L> QueryOpen for OpenShrine<L> {
     type Error = Error;
 
     // todo use SecretBytes
@@ -217,7 +206,7 @@ impl QueryOpen for OpenShrine {
         }
     }
 
-    fn mv(self, other: &mut OpenShrine) {
+    fn mv<T>(self, other: &mut OpenShrine<T>) {
         match self {
             OpenShrine::LocalClear(s) => s.mv(other),
             OpenShrine::LocalAes(s) => s.mv(other),

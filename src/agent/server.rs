@@ -17,6 +17,8 @@ use hyperlocal::UnixServerExt;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::remove_file;
+use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{mem, process};
@@ -84,9 +86,10 @@ pub async fn serve(pidfile: String, socketfile: String) {
     scheduler.shutdown().await.unwrap();
 }
 
-fn router<P>() -> Router<AgentState<P>>
+fn router<P, L>() -> Router<AgentState<P, L>>
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     Router::new()
         .route("/", delete(delete_agent))
@@ -124,9 +127,10 @@ async fn shutdown(shutdown_http_signal_rx: Receiver<()>) {
     info!("Shut down HTTP server");
 }
 
-async fn delete_agent<P>(State(state): State<AgentState<P>>)
+async fn delete_agent<P, L>(State(state): State<AgentState<P, L>>)
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("delete_agent");
     let channel = channel::<()>();
@@ -141,31 +145,34 @@ async fn get_pid() -> String {
     serde_json::to_string(&process::id()).unwrap()
 }
 
-async fn put_password<P>(
-    State(state): State<AgentState<P>>,
+async fn put_password<P, L>(
+    State(state): State<AgentState<P, L>>,
     Json(set_password_request): Json<SetPasswordRequest>,
 ) where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("set_password");
     state.set_password(set_password_request.uuid, set_password_request.password);
 }
 
-async fn delete_passwords<P>(State(state): State<AgentState<P>>)
+async fn delete_passwords<P, L>(State(state): State<AgentState<P, L>>)
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("delete_passwords");
     state.delete_passwords();
 }
 
-async fn get_keys<P>(
-    State(state): State<AgentState<P>>,
+async fn get_keys<P, L>(
+    State(state): State<AgentState<P, L>>,
     Path(path): Path<String>,
     Query(params): Query<GetSecretsRequest>,
 ) -> Response
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("get_keys from file `{}` ({:?})", path, params);
 
@@ -180,7 +187,7 @@ where
         Ok(regex) => regex,
     };
 
-    let shrine = match open_shrine::<P>(&state, &path) {
+    let shrine = match open_shrine::<P, L>(&state, &path) {
         Ok(shrine) => shrine,
         Err(response) => return response,
     };
@@ -205,16 +212,17 @@ where
     Json(secrets).into_response()
 }
 
-async fn get_key<P>(
-    State(state): State<AgentState<P>>,
+async fn get_key<P, L>(
+    State(state): State<AgentState<P, L>>,
     Path((path, key)): Path<(String, String)>,
 ) -> Response
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("get_key `{}` from file `{}`", key, path);
 
-    let shrine = match open_shrine::<P>(&state, &path) {
+    let shrine = match open_shrine::<P, L>(&state, &path) {
         Ok(shrine) => shrine,
         Err(response) => return response,
     };
@@ -229,9 +237,10 @@ where
     }
 }
 
-fn open_shrine<P>(state: &AgentState<P>, path: &str) -> Result<OpenShrine, Response>
+fn open_shrine<P, L>(state: &AgentState<P, L>, path: &str) -> Result<OpenShrine<L>, Response>
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     let shrine = match state.shrine_provider.load_from_path(path) {
         Err(Error::FileNotFound(_)) => {
@@ -265,17 +274,18 @@ where
     Ok(shrine)
 }
 
-async fn put_key<P>(
-    State(state): State<AgentState<P>>,
+async fn put_key<P, L>(
+    State(state): State<AgentState<P, L>>,
     Path((path, key)): Path<(String, String)>,
     Json(request): Json<SetSecretRequest>,
 ) -> Response
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("set_key `{}` on file `{}`", key, path);
 
-    let mut shrine = match open_shrine::<P>(&state, &path) {
+    let mut shrine = match open_shrine::<P, L>(&state, &path) {
         Ok(s) => s,
         Err(response) => return response,
     };
@@ -318,16 +328,17 @@ where
         .unwrap()
 }
 
-async fn delete_key<P>(
-    State(state): State<AgentState<P>>,
+async fn delete_key<P, L>(
+    State(state): State<AgentState<P, L>>,
     Path((path, key)): Path<(String, String)>,
 ) -> Response
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     info!("delete_key `{}` on file `{}`", key, path);
 
-    let mut shrine = match open_shrine::<P>(&state, &path) {
+    let mut shrine = match open_shrine::<P, L>(&state, &path) {
         Ok(s) => s,
         Err(response) => return response,
     };
@@ -366,25 +377,29 @@ where
 }
 
 #[derive(Clone)]
-struct AgentState<P>
+struct AgentState<P, L>
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     shrine_provider: P,
     http_shutdown_tx: Arc<Mutex<Sender<()>>>,
     passwords: Arc<Mutex<HashMap<Uuid, ATimePassword>>>,
+    location: PhantomData<L>,
 }
 type ATimePassword = (DateTime<Utc>, ShrinePassword);
 
-impl<P> AgentState<P>
+impl<P, L> AgentState<P, L>
 where
-    P: ShrineProvider,
+    L: Clone + Send + Sync + 'static,
+    P: ShrineProvider<L>,
 {
     fn new(shrine_provider: P, http_shutdown_tx: Sender<()>) -> Self {
         Self {
             shrine_provider,
             http_shutdown_tx: Arc::new(Mutex::new(http_shutdown_tx)),
             passwords: Arc::new(Mutex::new(Default::default())),
+            location: PhantomData,
         }
     }
 
@@ -419,12 +434,15 @@ where
     }
 }
 
-trait ShrineProvider: Clone + Send + Sync + 'static {
-    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine, Error>
+trait ShrineProvider<L>: Clone + Send + Sync + 'static
+where
+    L: Clone + Send + Sync,
+{
+    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine<L>, Error>
     where
         P: AsRef<std::path::Path>;
 
-    fn save_to_path<P>(&self, path: P, shrine: ClosedShrine) -> Result<(), Error>
+    fn save_to_path<P>(&self, path: P, shrine: ClosedShrine<L>) -> Result<(), Error>
     where
         P: AsRef<std::path::Path>;
 }
@@ -432,8 +450,8 @@ trait ShrineProvider: Clone + Send + Sync + 'static {
 #[derive(Clone, Default)]
 struct DefaultShrineProvider {}
 
-impl ShrineProvider for DefaultShrineProvider {
-    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine, Error>
+impl ShrineProvider<PathBuf> for DefaultShrineProvider {
+    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine<PathBuf>, Error>
     where
         P: AsRef<std::path::Path>,
     {
@@ -443,7 +461,7 @@ impl ShrineProvider for DefaultShrineProvider {
         })
     }
 
-    fn save_to_path<P>(&self, _path: P, _shrine: ClosedShrine) -> Result<(), Error>
+    fn save_to_path<P>(&self, _path: P, _shrine: ClosedShrine<PathBuf>) -> Result<(), Error>
     where
         P: AsRef<std::path::Path>,
     {
@@ -455,7 +473,7 @@ impl ShrineProvider for DefaultShrineProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shrine::local::LocalShrine;
+    use crate::shrine::local::{LocalShrine, Memory};
     use crate::shrine::ClosedShrine;
     use crate::values::bytes::SecretBytes;
     use crate::values::secret::{Mode, Secret};
@@ -467,26 +485,26 @@ mod tests {
 
     #[derive(Clone)]
     struct MockShrineProvider {
-        shrine: Arc<Mutex<RefCell<Option<ClosedShrine>>>>,
+        shrine: Arc<Mutex<RefCell<Option<ClosedShrine<Memory>>>>>,
     }
 
     impl MockShrineProvider {
-        fn new(shrine: ClosedShrine) -> Self {
+        fn new(shrine: ClosedShrine<Memory>) -> Self {
             Self {
                 shrine: Arc::new(Mutex::new(RefCell::new(Some(shrine)))),
             }
         }
     }
 
-    impl ShrineProvider for MockShrineProvider {
-        fn load_from_path<P>(&self, _path: P) -> Result<ClosedShrine, Error>
+    impl ShrineProvider<Memory> for MockShrineProvider {
+        fn load_from_path<P>(&self, _path: P) -> Result<ClosedShrine<Memory>, Error>
         where
             P: AsRef<std::path::Path>,
         {
             Ok(self.shrine.lock().unwrap().take().unwrap())
         }
 
-        fn save_to_path<P>(&self, _path: P, shrine: ClosedShrine) -> Result<(), Error>
+        fn save_to_path<P>(&self, _path: P, shrine: ClosedShrine<Memory>) -> Result<(), Error>
         where
             P: AsRef<std::path::Path>,
         {

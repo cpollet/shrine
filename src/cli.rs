@@ -365,12 +365,11 @@ fn exec(cli: Args) -> Result<(), Error> {
                 mode: mode.to_mode(stdin),
                 value: value.as_deref(),
             },
-            &path,
         ),
         Some(Commands::Get { key, encoding }) => get(&shrine, &key, encoding.into(), &mut stdout()),
         Some(Commands::Ls { pattern }) => ls(&shrine, pattern.as_deref(), &mut stdout()),
-        Some(Commands::Rm { key }) => rm(shrine, &key, &path),
-        Some(Commands::Import { file, prefix }) => import(shrine, &file, prefix.as_deref(), &path),
+        Some(Commands::Rm { key }) => rm(shrine, &key),
+        Some(Commands::Import { file, prefix }) => import(shrine, file, prefix.as_deref()),
         Some(Commands::Dump { pattern, config }) => {
             dump(&shrine, pattern.as_deref(), config, &path)
         }
