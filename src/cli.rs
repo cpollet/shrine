@@ -2,7 +2,7 @@ use clap::{command, Parser, Subcommand, ValueEnum};
 use shrine::agent::client::{HttpClient, SocketClient};
 use shrine::controller::convert::convert;
 use shrine::controller::dump::dump;
-use shrine::controller::get::get;
+use shrine::controller::get::{get, Output};
 use shrine::controller::import::import;
 use shrine::controller::info::{info, Fields};
 use shrine::controller::init::init;
@@ -361,7 +361,9 @@ fn exec(cli: Args) -> Result<(), Error> {
                 value: value.map(SecretBytes::from),
             },
         ),
-        Some(Commands::Get { key, encoding }) => get(&shrine, &key, encoding.into(), &mut stdout()),
+        Some(Commands::Get { key, encoding }) => {
+            get(&shrine, &key, encoding.into(), &mut Output::stdout())
+        }
         Some(Commands::Ls { pattern }) => ls(&shrine, pattern.as_deref(), &mut stdout()),
         Some(Commands::Rm { key }) => rm(shrine, &key),
         Some(Commands::Import { file, prefix }) => import(shrine, file, prefix.as_deref()),

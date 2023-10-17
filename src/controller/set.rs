@@ -3,12 +3,12 @@ use crate::utils::Input;
 use crate::Error;
 use std::path::PathBuf;
 
-pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, value: Input) -> Result<(), Error> {
+pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, input: Input) -> Result<(), Error> {
     if key.starts_with('.') {
         return Err(Error::KeyNotFound(key.to_string()));
     }
 
-    let (value, mode) = value.get(&format!("Enter `{}` value: ", key))?;
+    let (value, mode) = input.get(&format!("Enter `{}` value: ", key))?;
 
     shrine.set(key, value, mode)?;
 
