@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::Error;
 
 pub fn rm(mut shrine: OpenShrine<PathBuf>, key: &str) -> Result<(), Error> {

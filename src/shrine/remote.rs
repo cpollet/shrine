@@ -1,7 +1,7 @@
 use crate::agent::client::Client;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::serialization::SerializationFormat;
-use crate::shrine::{OpenShrine, QueryClosed, QueryOpen};
+use crate::shrine::OpenShrine;
 use crate::values::bytes::SecretBytes;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
@@ -16,50 +16,44 @@ impl RemoteShrine {
     pub fn new(path: String, client: Box<dyn Client>) -> Self {
         Self { path, client }
     }
-}
 
-impl QueryClosed for RemoteShrine {
-    fn uuid(&self) -> Uuid {
+    pub fn uuid(&self) -> Uuid {
         todo!()
     }
 
-    fn version(&self) -> u8 {
+    pub fn version(&self) -> u8 {
         todo!()
     }
 
-    fn serialization_format(&self) -> SerializationFormat {
+    pub fn serialization_format(&self) -> SerializationFormat {
         todo!()
     }
 
-    fn encryption_algorithm(&self) -> EncryptionAlgorithm {
+    pub fn encryption_algorithm(&self) -> EncryptionAlgorithm {
         todo!()
     }
-}
 
-impl QueryOpen for RemoteShrine {
-    type Error = Error;
-
-    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error> {
+    pub fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error> {
         self.client.set_key(&self.path, key, value, mode)
     }
 
-    fn get(&self, _key: &str) -> Result<&Secret, Self::Error> {
+    pub fn get(&self, _key: &str) -> Result<&Secret, Error> {
         todo!()
     }
 
-    fn rm(&mut self, _key: &str) -> bool {
+    pub fn rm(&mut self, _key: &str) -> bool {
         todo!()
     }
 
-    fn mv<T>(self, _other: &mut OpenShrine<T>) {
+    pub fn mv<T>(self, _other: &mut OpenShrine<T>) {
         todo!()
     }
 
-    fn keys(&self) -> Vec<String> {
+    pub fn keys(&self) -> Vec<String> {
         todo!()
     }
 
-    fn keys_private(&self) -> Vec<String> {
+    pub fn keys_private(&self) -> Vec<String> {
         todo!()
     }
 }

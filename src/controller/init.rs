@@ -1,7 +1,7 @@
 use crate::git::Repository;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::local::LocalShrine;
-use crate::shrine::QueryClosed;
+use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::values::password::ShrinePassword;
 use crate::{git, Error};
 use std::path::{Path, PathBuf};
@@ -26,28 +26,34 @@ where
         ));
     }
 
-    let mut shrine = LocalShrine::new();
+    let shrine = LocalShrine::new();
+    let shrine = shrine.with_path(path.as_ref().to_path_buf());
     // shrine.with_serialization_format(SerializationFormat::Json);
+    let shrine = match encryption {
+        Some(EncryptionAlgorithm::Plain) => OpenShrine::LocalClear(shrine.into_clear()),
+        _ => {
+            let uuid = shrine.uuid();
+            OpenShrine::LocalAes(shrine.set_password(password_provider(uuid)))
+        }
+    };
 
-    if git {
+    let shrine = if git {
+        let mut shrine = shrine;
         git::write_configuration(&mut shrine);
-    }
+        shrine
+    } else {
+        shrine
+    };
+
     let mut repo_path = PathBuf::from(path.clone());
     repo_path.pop();
     let repository = Repository::new(&repo_path, &shrine);
 
-    match encryption {
-        Some(EncryptionAlgorithm::Plain) => {
-            shrine.into_clear().close()?.write_to(&path)?;
-        }
-        _ => {
-            let uuid = shrine.uuid();
-            shrine
-                .set_password(password_provider(uuid))
-                .close()?
-                .write_to(&path)?;
-        }
-    };
+    match shrine.close()? {
+        ClosedShrine::LocalClear(s) => s.write_file()?,
+        ClosedShrine::LocalAes(s) => s.write_file()?,
+        ClosedShrine::Remote(_) => panic!("local shrine cannot become a remote shrine"),
+    }
 
     print!("Initialized new shrine in `{}`", path.as_ref().display());
 

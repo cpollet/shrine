@@ -1,4 +1,4 @@
-use crate::shrine::QueryOpen;
+use crate::shrine::OpenShrine;
 use crate::values::bytes::SecretBytes;
 use crate::values::secret::Mode;
 use crate::Error;
@@ -14,10 +14,7 @@ struct Configuration {
 }
 
 impl Configuration {
-    fn read<S>(shrine: &S) -> Configuration
-    where
-        S: QueryOpen,
-    {
+    fn read<L>(shrine: &OpenShrine<L>) -> Configuration {
         Self {
             enabled: shrine
                 .get(".git.enabled")
@@ -40,10 +37,7 @@ impl Configuration {
         }
     }
 
-    fn write<S>(&self, shrine: &mut S)
-    where
-        S: QueryOpen,
-    {
+    fn write<L>(&self, shrine: &mut OpenShrine<L>) {
         shrine
             .set(
                 ".git.enabled",
@@ -91,10 +85,9 @@ pub struct Open {
 }
 
 impl Repository {
-    pub fn new<P, S>(path: P, shrine: &S) -> Option<Self>
+    pub fn new<P, L>(path: P, shrine: &OpenShrine<L>) -> Option<Self>
     where
         P: Into<PathBuf>,
-        S: QueryOpen,
     {
         if let Ok(enabled) = shrine
             .get(".git.enabled")
@@ -206,9 +199,6 @@ impl Repository<Open> {
     }
 }
 
-pub fn write_configuration<S>(shrine: &mut S)
-where
-    S: QueryOpen,
-{
+pub fn write_configuration<L>(shrine: &mut OpenShrine<L>) {
     Configuration::default().write(shrine);
 }

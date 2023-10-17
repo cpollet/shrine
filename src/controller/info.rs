@@ -1,4 +1,4 @@
-use crate::shrine::{ClosedShrine, QueryClosed};
+use crate::shrine::ClosedShrine;
 use crate::Error;
 use std::path::{Path, PathBuf};
 

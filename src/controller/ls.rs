@@ -1,4 +1,4 @@
-use crate::shrine::{OpenShrine, QueryOpen};
+use crate::shrine::OpenShrine;
 use crate::values::key::Key;
 use crate::Error;
 use regex::Regex;

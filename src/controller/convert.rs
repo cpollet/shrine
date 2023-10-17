@@ -1,6 +1,6 @@
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::local::LocalShrine;
-use crate::shrine::{ClosedShrine, OpenShrine, QueryClosed, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::utils::read_password;
 use crate::values::password::ShrinePassword;
 use crate::Error;

@@ -1,7 +1,7 @@
 use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 
 use crate::shrine::local::LoadedShrine;
-use crate::shrine::{ClosedShrine, OpenShrine, QueryClosed, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::values::key::Key;
 use crate::values::password::ShrinePassword;
 use crate::values::secret::Secret;

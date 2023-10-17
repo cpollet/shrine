@@ -7,7 +7,6 @@ use crate::values::bytes::SecretBytes;
 use crate::values::password::ShrinePassword;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
-use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -35,32 +34,6 @@ where
     }
 }
 
-pub trait QueryClosed {
-    fn uuid(&self) -> Uuid;
-
-    fn version(&self) -> u8;
-
-    fn serialization_format(&self) -> SerializationFormat;
-
-    fn encryption_algorithm(&self) -> EncryptionAlgorithm;
-}
-
-pub trait QueryOpen: QueryClosed {
-    type Error: Debug;
-
-    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error>;
-
-    fn get(&self, key: &str) -> Result<&Secret, Self::Error>;
-
-    fn rm(&mut self, key: &str) -> bool;
-
-    fn mv<T>(self, other: &mut OpenShrine<T>);
-
-    fn keys(&self) -> Vec<String>;
-
-    fn keys_private(&self) -> Vec<String>;
-}
-
 pub enum ClosedShrine<L> {
     LocalClear(LocalShrine<Closed, Clear, L>),
     LocalAes(LocalShrine<Closed, Aes<NoPassword>, L>),
@@ -78,13 +51,14 @@ impl<L> ClosedShrine<L> {
                 let uuid = s.uuid();
                 s.open(password_provider(uuid)).map(OpenShrine::LocalAes)?
             }
-            ClosedShrine::Remote(s) => OpenShrine::Remote(s),
+            ClosedShrine::Remote(s) => {
+                // todo we probably want to send the password to the agent
+                OpenShrine::Remote(s)
+            }
         })
     }
-}
 
-impl<L> QueryClosed for ClosedShrine<L> {
-    fn uuid(&self) -> Uuid {
+    pub fn uuid(&self) -> Uuid {
         match self {
             ClosedShrine::LocalClear(s) => s.uuid(),
             ClosedShrine::LocalAes(s) => s.uuid(),
@@ -92,7 +66,7 @@ impl<L> QueryClosed for ClosedShrine<L> {
         }
     }
 
-    fn version(&self) -> u8 {
+    pub fn version(&self) -> u8 {
         match self {
             ClosedShrine::LocalClear(s) => s.version(),
             ClosedShrine::LocalAes(s) => s.version(),
@@ -100,7 +74,7 @@ impl<L> QueryClosed for ClosedShrine<L> {
         }
     }
 
-    fn serialization_format(&self) -> SerializationFormat {
+    pub fn serialization_format(&self) -> SerializationFormat {
         match self {
             ClosedShrine::LocalClear(s) => s.serialization_format(),
             ClosedShrine::LocalAes(s) => s.serialization_format(),
@@ -108,7 +82,7 @@ impl<L> QueryClosed for ClosedShrine<L> {
         }
     }
 
-    fn encryption_algorithm(&self) -> EncryptionAlgorithm {
+    pub fn encryption_algorithm(&self) -> EncryptionAlgorithm {
         match self {
             ClosedShrine::LocalClear(s) => s.encryption_algorithm(),
             ClosedShrine::LocalAes(s) => s.encryption_algorithm(),
@@ -140,47 +114,8 @@ impl<L> OpenShrine<L> {
             OpenShrine::Remote(s) => ClosedShrine::Remote(s),
         })
     }
-}
 
-impl<L> QueryClosed for OpenShrine<L> {
-    fn uuid(&self) -> Uuid {
-        match self {
-            OpenShrine::LocalClear(s) => s.uuid(),
-            OpenShrine::LocalAes(s) => s.uuid(),
-            OpenShrine::Remote(s) => s.uuid(),
-        }
-    }
-
-    fn version(&self) -> u8 {
-        match self {
-            OpenShrine::LocalClear(s) => s.version(),
-            OpenShrine::LocalAes(s) => s.version(),
-            OpenShrine::Remote(s) => s.version(),
-        }
-    }
-
-    fn serialization_format(&self) -> SerializationFormat {
-        match self {
-            OpenShrine::LocalClear(s) => s.serialization_format(),
-            OpenShrine::LocalAes(s) => s.serialization_format(),
-            OpenShrine::Remote(s) => s.serialization_format(),
-        }
-    }
-
-    fn encryption_algorithm(&self) -> EncryptionAlgorithm {
-        match self {
-            OpenShrine::LocalClear(s) => s.encryption_algorithm(),
-            OpenShrine::LocalAes(s) => s.encryption_algorithm(),
-            OpenShrine::Remote(s) => s.encryption_algorithm(),
-        }
-    }
-}
-
-impl<L> QueryOpen for OpenShrine<L> {
-    type Error = Error;
-
-    // todo use SecretBytes
-    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error> {
+    pub fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error> {
         match self {
             OpenShrine::LocalClear(s) => s.set(key, value, mode),
             OpenShrine::LocalAes(s) => s.set(key, value, mode),
@@ -188,7 +123,7 @@ impl<L> QueryOpen for OpenShrine<L> {
         }
     }
 
-    fn get(&self, key: &str) -> Result<&Secret, Self::Error> {
+    pub fn get(&self, key: &str) -> Result<&Secret, Error> {
         match self {
             OpenShrine::LocalClear(s) => s.get(key),
             OpenShrine::LocalAes(s) => s.get(key),
@@ -196,7 +131,7 @@ impl<L> QueryOpen for OpenShrine<L> {
         }
     }
 
-    fn rm(&mut self, key: &str) -> bool {
+    pub fn rm(&mut self, key: &str) -> bool {
         match self {
             OpenShrine::LocalClear(s) => s.rm(key),
             OpenShrine::LocalAes(s) => s.rm(key),
@@ -204,7 +139,7 @@ impl<L> QueryOpen for OpenShrine<L> {
         }
     }
 
-    fn mv<T>(self, other: &mut OpenShrine<T>) {
+    pub fn mv<T>(self, other: &mut OpenShrine<T>) {
         match self {
             OpenShrine::LocalClear(s) => s.mv(other),
             OpenShrine::LocalAes(s) => s.mv(other),
@@ -212,7 +147,7 @@ impl<L> QueryOpen for OpenShrine<L> {
         }
     }
 
-    fn keys(&self) -> Vec<String> {
+    pub fn keys(&self) -> Vec<String> {
         match self {
             OpenShrine::LocalClear(s) => s.keys(),
             OpenShrine::LocalAes(s) => s.keys(),
@@ -220,7 +155,7 @@ impl<L> QueryOpen for OpenShrine<L> {
         }
     }
 
-    fn keys_private(&self) -> Vec<String> {
+    pub fn keys_private(&self) -> Vec<String> {
         match self {
             OpenShrine::LocalClear(s) => s.keys_private(),
             OpenShrine::LocalAes(s) => s.keys_private(),

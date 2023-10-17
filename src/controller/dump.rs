@@ -1,4 +1,4 @@
-use crate::shrine::{OpenShrine, QueryOpen};
+use crate::shrine::OpenShrine;
 use crate::values::secret::Mode;
 use crate::Error;
 use base64::Engine;

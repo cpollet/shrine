@@ -2,7 +2,7 @@ use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::holder::Holder;
 use crate::shrine::metadata::Metadata;
 use crate::shrine::serialization::SerializationFormat;
-use crate::shrine::{OpenShrine, QueryClosed, QueryOpen, VERSION};
+use crate::shrine::{OpenShrine, VERSION};
 use crate::values::bytes::SecretBytes;
 use crate::values::password::ShrinePassword;
 use crate::values::secret::{Mode, Secret};
@@ -75,18 +75,6 @@ impl LocalShrine<Open, Aes<NoPassword>, Memory> {
     }
 }
 
-impl<S, E> LocalShrine<S, E, Memory> {
-    pub fn with_path(self, path: PathBuf) -> LocalShrine<S, E, PathBuf> {
-        LocalShrine {
-            magic_number: self.magic_number,
-            metadata: self.metadata,
-            payload: self.payload,
-            encryption: self.encryption,
-            location: path,
-        }
-    }
-}
-
 impl Default for LocalShrine<Open, Aes<NoPassword>, Memory> {
     fn default() -> Self {
         Self {
@@ -107,20 +95,32 @@ impl Default for LocalShrine<Open, Aes<NoPassword>, Memory> {
     }
 }
 
-impl<S, E, L> QueryClosed for LocalShrine<S, E, L> {
-    fn uuid(&self) -> Uuid {
+impl<S, E> LocalShrine<S, E, Memory> {
+    pub fn with_path(self, path: PathBuf) -> LocalShrine<S, E, PathBuf> {
+        LocalShrine {
+            magic_number: self.magic_number,
+            metadata: self.metadata,
+            payload: self.payload,
+            encryption: self.encryption,
+            location: path,
+        }
+    }
+}
+
+impl<S, E, L> LocalShrine<S, E, L> {
+    pub fn uuid(&self) -> Uuid {
         self.metadata.uuid()
     }
 
-    fn version(&self) -> u8 {
+    pub fn version(&self) -> u8 {
         self.metadata.version()
     }
 
-    fn serialization_format(&self) -> SerializationFormat {
+    pub fn serialization_format(&self) -> SerializationFormat {
         self.metadata.serialization_format()
     }
 
-    fn encryption_algorithm(&self) -> EncryptionAlgorithm {
+    pub fn encryption_algorithm(&self) -> EncryptionAlgorithm {
         self.metadata.encryption_algorithm()
     }
 }
@@ -156,16 +156,10 @@ impl<E, L> LocalShrine<Closed, E, L> {
     }
 }
 
-impl<E> LocalShrine<Closed, E, PathBuf> {
-    pub fn write_file(&self) -> Result<(), Error> {
-        self.write_to(&self.location)
-    }
-}
-
 impl<E, L> Clone for LocalShrine<Closed, E, L>
-where
-    E: Clone,
-    L: Clone,
+    where
+        E: Clone,
+        L: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -175,6 +169,12 @@ where
             encryption: self.encryption.clone(),
             location: self.location.clone(),
         }
+    }
+}
+
+impl<E> LocalShrine<Closed, E, PathBuf> {
+    pub fn write_file(&self) -> Result<(), Error> {
+        self.write_to(&self.location)
     }
 }
 
@@ -237,12 +237,8 @@ impl<E, L> LocalShrine<Open, E, L> {
             },
         };
     }
-}
 
-impl<E, L> QueryOpen for LocalShrine<Open, E, L> {
-    type Error = Error;
-
-    fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Self::Error> {
+    pub fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error> {
         if let Some(key) = key.strip_prefix('.') {
             return self
                 .payload
@@ -260,18 +256,18 @@ impl<E, L> QueryOpen for LocalShrine<Open, E, L> {
         }
     }
 
-    fn get(&self, key: &str) -> Result<&Secret, Self::Error> {
+    pub fn get(&self, key: &str) -> Result<&Secret, Error> {
         if let Some(key) = key.strip_prefix('.') {
             return self.payload.secrets.get_private(key);
         }
         self.payload.secrets.get(key)
     }
 
-    fn rm(&mut self, key: &str) -> bool {
+    pub fn rm(&mut self, key: &str) -> bool {
         self.payload.secrets.remove(key)
     }
 
-    fn mv<T>(self, other: &mut OpenShrine<T>) {
+    pub fn mv<T>(self, other: &mut OpenShrine<T>) {
         match other {
             OpenShrine::LocalClear(s) => s.payload = self.payload,
             OpenShrine::LocalAes(s) => s.payload = self.payload,
@@ -281,11 +277,11 @@ impl<E, L> QueryOpen for LocalShrine<Open, E, L> {
         }
     }
 
-    fn keys(&self) -> Vec<String> {
+    pub fn keys(&self) -> Vec<String> {
         self.payload.secrets.keys()
     }
 
-    fn keys_private(&self) -> Vec<String> {
+    pub fn keys_private(&self) -> Vec<String> {
         self.payload.secrets.keys_private()
     }
 }

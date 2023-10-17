@@ -1,4 +1,4 @@
-use crate::shrine::{OpenShrine, QueryOpen};
+use crate::shrine::OpenShrine;
 use crate::values::secret::{Mode, Secret};
 use crate::Error;
 use atty::Stream;

@@ -3,7 +3,7 @@ use dotenv_parser::parse_dotenv;
 
 use std::fs::read_to_string;
 
-use crate::shrine::{ClosedShrine, OpenShrine, QueryOpen};
+use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::values::bytes::SecretBytes;
 use crate::values::secret::Mode;
 use std::path::{Path, PathBuf};
