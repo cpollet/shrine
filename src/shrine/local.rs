@@ -157,9 +157,9 @@ impl<E, L> LocalShrine<Closed, E, L> {
 }
 
 impl<E, L> Clone for LocalShrine<Closed, E, L>
-    where
-        E: Clone,
-        L: Clone,
+where
+    E: Clone,
+    L: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -175,6 +175,12 @@ impl<E, L> Clone for LocalShrine<Closed, E, L>
 impl<E> LocalShrine<Closed, E, PathBuf> {
     pub fn write_file(&self) -> Result<(), Error> {
         self.write_to(&self.location)
+    }
+}
+
+impl<S, E> LocalShrine<S, E, PathBuf> {
+    pub fn path(&self) -> &Path {
+        &self.location
     }
 }
 

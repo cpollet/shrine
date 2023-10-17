@@ -1,4 +1,5 @@
 use crate::agent::client::Client;
+use crate::git::Repository;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::local::{Aes, Clear, Closed, LoadedShrine, LocalShrine, NoPassword, Open};
 use crate::shrine::remote::RemoteShrine;
@@ -26,7 +27,7 @@ where
 {
     if client.is_running() {
         Ok(ClosedShrine::Remote(RemoteShrine::new(
-            path.as_ref().display().to_string(),
+            path.as_ref().to_path_buf(),
             client,
         )))
     } else {
@@ -160,6 +161,24 @@ impl<L> OpenShrine<L> {
             OpenShrine::LocalClear(s) => s.keys_private(),
             OpenShrine::LocalAes(s) => s.keys_private(),
             OpenShrine::Remote(s) => s.keys_private(),
+        }
+    }
+}
+
+impl OpenShrine<PathBuf> {
+    pub fn path(&self) -> &Path {
+        match self {
+            OpenShrine::LocalClear(s) => s.path(),
+            OpenShrine::LocalAes(s) => s.path(),
+            OpenShrine::Remote(s) => s.path(),
+        }
+    }
+
+    pub fn repository(&self) -> Option<Repository> {
+        match self {
+            OpenShrine::LocalClear(_) => Repository::new(self),
+            OpenShrine::LocalAes(_) => Repository::new(self),
+            OpenShrine::Remote(_) => None,
         }
     }
 }

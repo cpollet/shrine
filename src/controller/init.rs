@@ -45,23 +45,20 @@ where
         shrine
     };
 
-    let mut repo_path = PathBuf::from(path.clone());
-    repo_path.pop();
-    let repository = Repository::new(&repo_path, &shrine);
+    let repository = Repository::new(&shrine);
 
     match shrine.close()? {
         ClosedShrine::LocalClear(s) => s.write_file()?,
         ClosedShrine::LocalAes(s) => s.write_file()?,
         ClosedShrine::Remote(_) => panic!("local shrine cannot become a remote shrine"),
-    }
+    };
 
     print!("Initialized new shrine in `{}`", path.as_ref().display());
 
     if let Some(repository) = repository {
-        let commit = repository
-            .open()
-            .and_then(|r| r.create_commit("Initialize shrine"))?;
-        print!("; git commit {} in {}", commit, repo_path.display());
+        let repository = repository.open()?;
+        let commit = repository.create_commit("Initialize shrine")?;
+        print!("; git commit {} in {}", commit, repository.path().display());
     }
 
     println!();

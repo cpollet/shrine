@@ -8,13 +8,19 @@ pub fn rm(mut shrine: OpenShrine<PathBuf>, key: &str) -> Result<(), Error> {
         return Err(Error::KeyNotFound(key.to_string()));
     }
 
+    let repository = shrine.repository();
+
     match shrine.close()? {
         ClosedShrine::LocalClear(s) => s.write_file()?,
         ClosedShrine::LocalAes(s) => s.write_file()?,
         ClosedShrine::Remote(_) => {}
     };
 
-    // todo git
+    if let Some(repository) = repository {
+        if repository.commit_auto() {
+            repository.open()?.create_commit("Update shrine")?;
+        }
+    }
 
     Ok(())
 }

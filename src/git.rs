@@ -85,17 +85,21 @@ pub struct Open {
 }
 
 impl Repository {
-    pub fn new<P, L>(path: P, shrine: &OpenShrine<L>) -> Option<Self>
-    where
-        P: Into<PathBuf>,
-    {
+    pub fn new(shrine: &OpenShrine<PathBuf>) -> Option<Self> {
+        if let OpenShrine::Remote(_) = shrine {
+            return None;
+        }
+
+        let mut path = shrine.path().to_path_buf();
+        path.pop();
+
         if let Ok(enabled) = shrine
             .get(".git.enabled")
             .map(|s| String::from_utf8(Vec::from(s.value().expose_secret_as_bytes())).unwrap())
         {
             if enabled == "true" {
                 return Some(Repository {
-                    path: path.into(),
+                    path,
                     configuration: Configuration::read(shrine),
                     state: Closed,
                 });
@@ -107,6 +111,10 @@ impl Repository {
 }
 
 impl<State> Repository<State> {
+    pub fn path(&self) -> &Path {
+        self.path.as_path()
+    }
+
     fn signature<'a>() -> Result<Signature<'a>, Error> {
         let now = Local::now();
         let username = whoami::username();

@@ -380,7 +380,6 @@ fn exec(cli: Args) -> Result<(), Error> {
                     mode: Mode::Text,
                     value: value.map(SecretBytes::from),
                 },
-                path,
             ),
             Some(ConfigCommands::Get { key: _key }) => todo!(), //config::get(shrine_provider, &key),
             _ => panic!(),

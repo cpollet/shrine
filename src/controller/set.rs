@@ -12,6 +12,8 @@ pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, input: Input) -> Result<(
 
     shrine.set(key, value, mode)?;
 
+    let repository = shrine.repository();
+
     let shrine = shrine.close()?;
 
     match shrine {
@@ -20,7 +22,11 @@ pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, input: Input) -> Result<(
         ClosedShrine::Remote(_) => {}
     }
 
-    // todo git repo
+    if let Some(repository) = repository {
+        if repository.commit_auto() {
+            repository.open()?.create_commit("Update shrine")?;
+        }
+    }
 
     Ok(())
 }
