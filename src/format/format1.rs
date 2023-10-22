@@ -17,6 +17,10 @@ impl Format for Format1 {
         1
     }
 
+    fn is_readonly(&self) -> bool {
+        false
+    }
+
     fn serialization_format(&self) -> SerializationFormat {
         self.serialization
     }
@@ -25,7 +29,7 @@ impl Format for Format1 {
         self.serialization = format;
     }
 
-    fn deserialize(&self, bytes: Zeroizing<Vec<u8>>) -> Result<Secrets, Error> {
+    fn deserialize_secret(&self, bytes: Zeroizing<Vec<u8>>) -> Result<Secrets, Error> {
         self.serialization_format().serializer().deserialize(&bytes)
     }
 
@@ -60,7 +64,7 @@ impl Format1 {
         let (enc, bytes) = Self::encryption(bytes)?;
         let (ser, bytes) = Self::serialization(bytes)?;
 
-        let mut vec = Vec::<u8>::with_capacity(bytes.len());
+        let mut vec = Vec::with_capacity(bytes.len());
         vec.extend_from_slice(bytes);
         let payload = Closed::new(vec);
 

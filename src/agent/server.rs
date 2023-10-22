@@ -347,9 +347,12 @@ where
     // todo repository
     // let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
 
-    if !shrine.rm(&key) {
-        return ErrorResponse::KeyNotFound { file: path, key }.into();
-    }
+    match shrine.rm(&key) {
+        Ok(true) => {},
+        Ok(false) => return ErrorResponse::KeyNotFound { file: path, key }.into(),
+        Err(Error::UnsupportedOldFormat(v)) => return ErrorResponse::Write(format!("Format {v} is not supported anymore")).into(),
+        _ => return ErrorResponse::Write(path).into(),
+    };
 
     let shrine = match shrine.close() {
         Ok(shrine) => shrine,
@@ -543,7 +546,13 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         let secret = serde_json::from_slice::<Secret>(
-            response.into_body().data().await.expect("1").expect("2").as_ref(),
+            response
+                .into_body()
+                .data()
+                .await
+                .expect("1")
+                .expect("2")
+                .as_ref(),
         )
         .expect("invalid json");
 

@@ -137,6 +137,10 @@ impl<S, E, L> LocalShrine<S, E, L> {
     pub fn serialization_format(&self) -> SerializationFormat {
         self.format.lock().unwrap().serialization_format()
     }
+
+    fn is_readonly_format(&self) -> bool {
+        self.format.lock().unwrap().is_readonly()
+    }
 }
 
 impl<E, L> LocalShrine<Closed, E, L> {
@@ -221,7 +225,7 @@ impl<L> LocalShrine<Closed, Clear, L> {
             .format
             .lock()
             .unwrap()
-            .deserialize(Zeroizing::new(self.payload.0))?;
+            .deserialize_secret(Zeroizing::new(self.payload.0))?;
 
         Ok(LocalShrine {
             uuid: self.uuid,
@@ -244,7 +248,11 @@ impl<L> LocalShrine<Closed, Aes<NoPassword>, L> {
                 .decrypt(&self.payload.0)?,
         );
 
-        let secrets = self.format.lock().unwrap().deserialize(clear_bytes)?;
+        let secrets = self
+            .format
+            .lock()
+            .unwrap()
+            .deserialize_secret(clear_bytes)?;
 
         Ok(LocalShrine {
             uuid: self.uuid,
@@ -262,6 +270,10 @@ impl<E, L> LocalShrine<Open, E, L> {
     }
 
     pub fn set(&mut self, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error> {
+        if self.is_readonly_format() {
+            return Err(Error::UnsupportedOldFormat(self.version()));
+        }
+
         if let Some(key) = key.strip_prefix('.') {
             return self
                 .payload
@@ -286,8 +298,12 @@ impl<E, L> LocalShrine<Open, E, L> {
         self.payload.secrets.get(key)
     }
 
-    pub fn rm(&mut self, key: &str) -> bool {
-        self.payload.secrets.remove(key)
+    pub fn rm(&mut self, key: &str) -> Result<bool, Error> {
+        if self.is_readonly_format() {
+            return Err(Error::UnsupportedOldFormat(self.version()));
+        }
+
+        Ok(self.payload.secrets.remove(key))
     }
 
     pub fn mv<T>(self, other: &mut OpenShrine<T>) {
@@ -560,7 +576,7 @@ mod tests {
         shrine
             .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();
-        assert!(shrine.rm("key"));
+        assert!(shrine.rm("key").unwrap());
 
         let err = shrine.get("key").unwrap_err();
         match err {
@@ -570,7 +586,7 @@ mod tests {
             e => panic!("Expected Error::KeyNotFound(\"key\"), got {:?}", e),
         }
 
-        assert!(!shrine.rm("key"));
+        assert!(!shrine.rm("key").unwrap());
     }
 
     #[test]

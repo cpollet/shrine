@@ -36,6 +36,9 @@ pub enum Error {
     #[error("Could not read shrine ({0})")]
     InvalidFormat(String),
 
+    #[error("Format {0} is not supported anymore; use `convert` command to convert to latest version")]
+    UnsupportedOldFormat(u8),
+
     #[error("Could not read shrine")]
     CryptoRead,
     #[error("Could not write shrine")]

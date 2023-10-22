@@ -3,7 +3,7 @@ use crate::Error;
 use std::path::PathBuf;
 
 pub fn rm(mut shrine: OpenShrine<PathBuf>, key: &str) -> Result<(), Error> {
-    if key.starts_with('.') || !shrine.rm(key) {
+    if key.starts_with('.') || !shrine.rm(key)? {
         return Err(Error::KeyNotFound(key.to_string()));
     }
 

@@ -1,5 +1,7 @@
+pub mod format0;
 pub mod format1;
 
+use crate::format::format0::Format0;
 use crate::format::format1::Format1;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::local::{InMemoryShrine, Secrets};
@@ -17,11 +19,13 @@ pub fn default() -> Arc<Mutex<dyn Format>> {
 pub trait Format: Debug + Send {
     fn version(&self) -> u8;
 
+    fn is_readonly(&self) -> bool;
+
     fn serialization_format(&self) -> SerializationFormat;
 
     fn set_serialization_format(&mut self, format: SerializationFormat);
 
-    fn deserialize(&self, bytes: Zeroizing<Vec<u8>>) -> Result<Secrets, Error>;
+    fn deserialize_secret(&self, bytes: Zeroizing<Vec<u8>>) -> Result<Secrets, Error>;
 
     fn serialize_secrets(&self, secrets: &Secrets) -> Result<Zeroizing<Vec<u8>>, Error>;
 
@@ -34,7 +38,7 @@ pub fn read(bytes: &[u8]) -> Result<InMemoryShrine, Error> {
     let (uuid, bytes) = uuid(bytes)?;
 
     match version {
-        0 => todo!(),
+        0 => Format0::read(uuid, bytes),
         1 => Format1::read(uuid, bytes),
         v => Err(Error::UnsupportedVersion(v)),
     }

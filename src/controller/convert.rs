@@ -3,7 +3,7 @@ use crate::shrine::local::LocalShrine;
 use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::utils::read_password;
 use crate::values::password::ShrinePassword;
-use crate::Error;
+use crate::{format, Error};
 use std::path::Path;
 
 pub fn convert<P, L>(
@@ -16,8 +16,17 @@ pub fn convert<P, L>(
 where
     P: AsRef<Path>,
 {
+    let default_version = format::default().lock().unwrap().version();
+
     let change_password = change_password || new_password.is_some();
-    if !change_password && encryption.is_none() {
+
+    let latest_version = match &shrine {
+        OpenShrine::LocalClear(s) => s.version() == default_version,
+        OpenShrine::LocalAes(s) => s.version() == default_version,
+        OpenShrine::Remote(_) => true,
+    };
+
+    if !change_password && encryption.is_none() && latest_version {
         return Ok(());
     }
 

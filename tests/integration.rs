@@ -355,3 +355,47 @@ fn git_then_disable_git() {
         .success()
         .stdout("1\n");
 }
+
+#[test]
+fn info_format_v0() {
+    assert_cmd::Command::cargo_bin("shrine")
+        .unwrap()
+        .args(vec!["--path",  "test-data/v0-bson-aes", "info"])
+        .assert()
+        .success()
+        .stdout(r#"File:          test-data/v0-bson-aes/shrine
+Version:       0
+UUID:          70f61568-eaae-a085-cd47-49650e58df08
+Serialization: BSON
+Encryption:    AES-GCM-SIV with 256-bits key
+"#);
+
+    assert_cmd::Command::cargo_bin("shrine")
+        .unwrap()
+        .args(vec!["--path",  "test-data/v0-bson-clear", "info"])
+        .assert()
+        .success()
+        .stdout(r#"File:          test-data/v0-bson-clear/shrine
+Version:       0
+UUID:          920e25c6-eced-53bd-da44-914201a8fba7
+Serialization: BSON
+Encryption:    Not encrypted
+"#);
+}
+
+#[test]
+fn get_format_v0() {
+    assert_cmd::Command::cargo_bin("shrine")
+        .unwrap()
+        .args(vec!["--path", "test-data/v0-bson-aes", "--password", "pwd", "get", "key"])
+        .assert()
+        .success()
+        .stdout("value");
+
+    assert_cmd::Command::cargo_bin("shrine")
+        .unwrap()
+        .args(vec!["--path", "test-data/v0-bson-clear", "get", "key"])
+        .assert()
+        .success()
+        .stdout("value");
+}

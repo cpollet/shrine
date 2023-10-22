@@ -1,4 +1,4 @@
-mod node;
+pub mod node;
 
 use crate::shrine::holder::node::Node;
 use crate::Error;

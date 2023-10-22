@@ -17,9 +17,6 @@ pub mod local;
 mod remote;
 pub mod serialization;
 
-/// Max supported file version
-pub const VERSION: u8 = 1;
-
 pub fn new<P>(client: Box<dyn Client>, path: P) -> Result<ClosedShrine<PathBuf>, Error>
 where
     P: AsRef<Path>,
@@ -131,7 +128,7 @@ impl<L> OpenShrine<L> {
         }
     }
 
-    pub fn rm(&mut self, key: &str) -> bool {
+    pub fn rm(&mut self, key: &str) -> Result<bool, Error> {
         match self {
             OpenShrine::LocalClear(s) => s.rm(key),
             OpenShrine::LocalAes(s) => s.rm(key),

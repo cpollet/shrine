@@ -47,7 +47,7 @@ impl RemoteShrine {
         todo!()
     }
 
-    pub fn rm(&mut self, _key: &str) -> bool {
+    pub fn rm(&mut self, _key: &str) -> Result<bool, Error> {
         todo!()
     }
 
