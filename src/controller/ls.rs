@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn ls() {
-        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::default().into_clear());
         shrine
             .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();

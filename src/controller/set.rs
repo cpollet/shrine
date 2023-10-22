@@ -46,7 +46,7 @@ mod tests {
         path.push("shrine");
 
         let shrine =
-            OpenShrine::LocalClear(LocalShrine::new().into_clear().with_path(path.clone()));
+            OpenShrine::LocalClear(LocalShrine::default().into_clear().with_path(path.clone()));
 
         super::set(
             shrine,

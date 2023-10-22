@@ -12,14 +12,13 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 pub mod encryption;
-mod holder;
+pub mod holder;
 pub mod local;
-mod metadata;
 mod remote;
 pub mod serialization;
 
 /// Max supported file version
-pub const VERSION: u8 = 0;
+pub const VERSION: u8 = 1;
 
 pub fn new<P>(client: Box<dyn Client>, path: P) -> Result<ClosedShrine<PathBuf>, Error>
 where
@@ -85,8 +84,8 @@ impl<L> ClosedShrine<L> {
 
     pub fn encryption_algorithm(&self) -> EncryptionAlgorithm {
         match self {
-            ClosedShrine::LocalClear(s) => s.encryption_algorithm(),
-            ClosedShrine::LocalAes(s) => s.encryption_algorithm(),
+            ClosedShrine::LocalClear(_) => EncryptionAlgorithm::Plain,
+            ClosedShrine::LocalAes(_) => EncryptionAlgorithm::Aes,
             ClosedShrine::Remote(s) => s.encryption_algorithm(),
         }
     }

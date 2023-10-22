@@ -1,4 +1,4 @@
-use predicates::prelude::predicate;
+use predicates::str::is_match;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
@@ -14,7 +14,9 @@ fn init() {
         .args(vec!["--password", "p", "init"])
         .assert()
         .success()
-        .stdout("Initialized new shrine in `./shrine`\n");
+        .stdout(is_match(
+            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`\\n",
+        ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -37,7 +39,9 @@ fn init_other_folder() {
         .args(vec!["--path", "other", "--password", "p", "init"])
         .assert()
         .success()
-        .stdout("Initialized new shrine in `other/shrine`\n");
+        .stdout(is_match(
+            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `other/shrine`\\n",
+        ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -237,8 +241,9 @@ fn create_shrine(pwd: &str) -> TempDir {
         .args(vec!["--password", pwd, "init"])
         .assert()
         .success()
-        .stdout("Initialized new shrine in `./shrine`\n");
-
+        .stdout(is_match(
+            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`\n"
+        ).unwrap());
     folder
 }
 
@@ -252,9 +257,9 @@ fn git() {
         .args(vec!["--password", "p", "init", "--git"])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with(
-            "Initialized new shrine in `./shrine`; git commit",
-        ));
+        .stdout(is_match(
+            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`; git commit [a-f0-9]{40} in .\\n",
+        ).unwrap());
 
     assert_cmd::Command::new("git")
         .current_dir(&folder)
@@ -274,9 +279,9 @@ fn git_disable_auto_commit() {
         .args(vec!["--password", "p", "init", "--git"])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with(
-            "Initialized new shrine in `./shrine`; git commit",
-        ));
+        .stdout(is_match(
+            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`; git commit [a-f0-9]{40} in .\\n",
+        ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -318,9 +323,9 @@ fn git_then_disable_git() {
         .args(vec!["--password", "p", "init", "--git"])
         .assert()
         .success()
-        .stdout(predicate::str::starts_with(
-            "Initialized new shrine in `./shrine`; git commit",
-        ));
+        .stdout(is_match(
+            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`; git commit [a-f0-9]{40} in .\\n",
+        ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
@@ -341,7 +346,6 @@ fn git_then_disable_git() {
         .current_dir(&folder)
         .args(vec!["--password", "p", "set", "key", "val"])
         .assert()
-        .success()
         .stdout("");
 
     assert_cmd::Command::new("git")

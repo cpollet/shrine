@@ -1,8 +1,5 @@
-use base64::Engine;
 use secrecy::{CloneableSecret, DebugSecret, ExposeSecret, Secret, SerializableSecret, Zeroize};
-use serde::de::{Error, Visitor};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::fmt::Formatter;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SecretBytes(Secret<Inner>);
@@ -24,7 +21,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Inner(Vec<u8>);
 
 impl SerializableSecret for Inner {}
@@ -45,40 +42,40 @@ impl AsRef<[u8]> for Inner {
     }
 }
 
-impl Serialize for Inner {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let str = base64::engine::general_purpose::STANDARD.encode(self.0.as_slice());
-        serializer.serialize_str(&str)
-    }
-}
-
-impl<'de> Deserialize<'de> for Inner {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        deserializer.deserialize_str(Base64Visitor {}).map(Inner)
-    }
-}
-
-struct Base64Visitor {}
-
-impl<'de> Visitor<'de> for Base64Visitor {
-    type Value = Vec<u8>;
-
-    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
-        formatter.write_str("A base64 encoded string")
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
-    where
-        E: Error,
-    {
-        base64::engine::general_purpose::STANDARD
-            .decode(v)
-            .map_err(|_| Error::custom("Invalid base64 data"))
-    }
-}
+// impl Serialize for Inner {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: Serializer,
+//     {
+//         let str = base64::engine::general_purpose::STANDARD.encode(self.0.as_slice());
+//         serializer.serialize_str(&str)
+//     }
+// }
+//
+// impl<'de> Deserialize<'de> for Inner {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         deserializer.deserialize_str(Base64Visitor {}).map(Inner)
+//     }
+// }
+//
+// struct Base64Visitor {}
+//
+// impl<'de> Visitor<'de> for Base64Visitor {
+//     type Value = Vec<u8>;
+//
+//     fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+//         formatter.write_str("A base64 encoded string")
+//     }
+//
+//     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+//     where
+//         E: Error,
+//     {
+//         base64::engine::general_purpose::STANDARD
+//             .decode(v)
+//             .map_err(|_| Error::custom("Invalid base64 data"))
+//     }
+// }

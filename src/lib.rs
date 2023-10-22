@@ -2,6 +2,7 @@ use std::path::PathBuf;
 pub mod agent;
 pub mod controller;
 pub mod encrypt;
+pub mod format;
 pub mod git;
 pub mod serialize;
 pub mod shrine;
@@ -32,6 +33,8 @@ pub enum Error {
 
     #[error("Could not read shrine")]
     Read(),
+    #[error("Could not read shrine ({0})")]
+    InvalidFormat(String),
 
     #[error("Could not read shrine")]
     CryptoRead,

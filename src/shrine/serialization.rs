@@ -10,11 +10,11 @@ use std::fmt::{Display, Formatter};
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, BorshSerialize, BorshDeserialize)]
 pub enum SerializationFormat {
     /// BSON, the data storage and network transfer format used by MongoDB.
-    #[default]
     Bson,
     /// JSON, the ubiquitous JavaScript Object Notation used by many HTTP APIs.
     Json,
     /// MessagePack, an efficient binary format that resembles a compact JSON.
+    #[default]
     MessagePack,
 }
 

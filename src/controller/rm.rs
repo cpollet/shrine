@@ -1,7 +1,6 @@
-use std::path::PathBuf;
-
 use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::Error;
+use std::path::PathBuf;
 
 pub fn rm(mut shrine: OpenShrine<PathBuf>, key: &str) -> Result<(), Error> {
     if key.starts_with('.') || !shrine.rm(key) {
@@ -40,7 +39,7 @@ mod tests {
         path.push("shrine");
 
         let mut shrine =
-            OpenShrine::LocalClear(LocalShrine::new().into_clear().with_path(path.clone()));
+            OpenShrine::LocalClear(LocalShrine::default().into_clear().with_path(path.clone()));
         shrine
             .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();

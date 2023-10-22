@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn get_auto() {
-        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::default().into_clear());
         shrine
             .set("txt_key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn get_raw() {
-        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::default().into_clear());
         shrine
             .set("txt_key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn get_base64() {
-        let mut shrine = OpenShrine::LocalClear(LocalShrine::new().into_clear());
+        let mut shrine = OpenShrine::LocalClear(LocalShrine::default().into_clear());
         shrine
             .set("txt_key", SecretBytes::from("value".as_bytes()), Mode::Text)
             .unwrap();

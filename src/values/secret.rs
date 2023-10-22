@@ -1,4 +1,5 @@
 use crate::values::bytes::SecretBytes;
+use base64::Engine;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
@@ -58,6 +59,27 @@ impl Secret {
         self.updated_by = Some(format!("{}@{}", whoami::username(), whoami::hostname()));
         self.updated_at = Some(Utc::now());
         self
+    }
+}
+
+impl From<crate::agent::entities::Secret> for Secret {
+    fn from(value: crate::agent::entities::Secret) -> Self {
+        Self {
+            value: match value.mode {
+                Mode::Binary => SecretBytes::from(
+                    base64::engine::general_purpose::STANDARD
+                        .decode(value.value)
+                        .unwrap()
+                        .as_slice(),
+                ),
+                Mode::Text => SecretBytes::from(value.value),
+            },
+            mode: value.mode,
+            created_by: value.created_by,
+            created_at: value.created_at,
+            updated_by: value.updated_by,
+            updated_at: value.updated_at,
+        }
     }
 }
 

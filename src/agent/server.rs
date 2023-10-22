@@ -1,10 +1,11 @@
 use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 
+use crate::agent::entities::Secret;
 use crate::shrine::local::LoadedShrine;
 use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::values::key::Key;
 use crate::values::password::ShrinePassword;
-use crate::values::secret::Secret;
+use crate::values::secret::Secret as SecretVal;
 use crate::Error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -202,7 +203,7 @@ where
     let secrets = keys
         .into_iter()
         .map(|k| (shrine.get(&k).expect("must be there"), k))
-        .collect::<Vec<(&Secret, String)>>();
+        .collect::<Vec<(&SecretVal, String)>>();
 
     let secrets = secrets
         .into_iter()
@@ -233,7 +234,7 @@ where
             key,
         }
         .into(),
-        Ok(secret) => Json(secret).into_response(),
+        Ok(secret) => Json(Secret::from(secret)).into_response(),
     }
 }
 
@@ -476,7 +477,7 @@ mod tests {
     use crate::shrine::local::{LocalShrine, Memory};
     use crate::shrine::ClosedShrine;
     use crate::values::bytes::SecretBytes;
-    use crate::values::secret::{Mode, Secret};
+    use crate::values::secret::Mode;
     use axum::body::HttpBody;
     use axum::http::Request;
     use hyper::Body;
@@ -524,9 +525,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::new().into_clear();
+            let mut shrine = LocalShrine::default().into_clear();
             shrine
-                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close().unwrap()
         };
@@ -541,11 +542,12 @@ mod tests {
 
         assert_eq!(response.status(), StatusCode::OK);
 
-        let secret: Secret =
-            serde_json::from_slice(response.into_body().data().await.unwrap().unwrap().as_ref())
-                .unwrap();
+        let secret = serde_json::from_slice::<Secret>(
+            response.into_body().data().await.expect("1").expect("2").as_ref(),
+        )
+        .expect("invalid json");
 
-        assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes())
+        assert_eq!(&secret.value, "value")
     }
 
     #[tokio::test]
@@ -553,9 +555,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::new().into_clear();
+            let mut shrine = LocalShrine::default().into_clear();
             shrine
-                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close().unwrap()
         };
@@ -577,9 +579,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::new();
+            let mut shrine = LocalShrine::default();
             shrine
-                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close(ShrinePassword::from("password")).unwrap()
         };
@@ -601,9 +603,9 @@ mod tests {
 
         let shrine_password = ShrinePassword::from("password");
         let shrine = {
-            let mut shrine = LocalShrine::new();
+            let mut shrine = LocalShrine::default();
             shrine
-                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close(ShrinePassword::from("password")).unwrap()
         };
@@ -626,7 +628,7 @@ mod tests {
             serde_json::from_slice(response.into_body().data().await.unwrap().unwrap().as_ref())
                 .unwrap();
 
-        assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes())
+        assert_eq!(&secret.value, "value")
     }
 
     #[tokio::test]
@@ -634,12 +636,12 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::new().into_clear();
+            let mut shrine = LocalShrine::default().into_clear();
             shrine
-                .set("key", SecretBytes::from("text".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("text"), Mode::Text)
                 .unwrap();
             shrine
-                .set("binkey", SecretBytes::from("bin".as_bytes()), Mode::Binary)
+                .set("binkey", SecretBytes::from("bin"), Mode::Binary)
                 .unwrap();
             shrine.close().unwrap()
         };
@@ -672,9 +674,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::new().into_clear();
+            let mut shrine = LocalShrine::default().into_clear();
             shrine
-                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close().unwrap()
         };
@@ -700,7 +702,7 @@ mod tests {
             serde_json::from_slice(value.into_body().data().await.unwrap().unwrap().as_ref())
                 .unwrap();
 
-        assert_eq!(secret.value().expose_secret_as_bytes(), "secret".as_bytes())
+        assert_eq!(&secret.value, "secret")
     }
 
     #[tokio::test]
@@ -708,9 +710,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::new().into_clear();
+            let mut shrine = LocalShrine::default().into_clear();
             shrine
-                .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+                .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close().unwrap()
         };
@@ -731,7 +733,7 @@ mod tests {
         let (tx, _) = channel::<()>();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(
-                LocalShrine::new().into_clear().close().unwrap(),
+                LocalShrine::default().into_clear().close().unwrap(),
             )),
             tx,
         );
@@ -748,7 +750,7 @@ mod tests {
     #[tokio::test]
     async fn route_get_key_requires_password() {
         let (tx, _) = channel::<()>();
-        let shrine = LocalShrine::new()
+        let shrine = LocalShrine::default()
             .close(ShrinePassword::from("password"))
             .unwrap();
         let state = AgentState::new(MockShrineProvider::new(ClosedShrine::LocalAes(shrine)), tx);
@@ -765,9 +767,9 @@ mod tests {
     #[tokio::test]
     async fn route_put_password_then_get_key_then_delete_password() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::new();
+        let mut shrine = LocalShrine::default();
         shrine
-            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
         let shrine = shrine.close(ShrinePassword::from("password")).unwrap();
 
@@ -826,7 +828,7 @@ mod tests {
     #[tokio::test]
     async fn route_get_key_not_found() {
         let (tx, _) = channel::<()>();
-        let shrine = LocalShrine::new().into_clear().close().unwrap();
+        let shrine = LocalShrine::default().into_clear().close().unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
             tx,
@@ -844,9 +846,9 @@ mod tests {
     #[tokio::test]
     async fn route_get_key() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::new().into_clear();
+        let mut shrine = LocalShrine::default().into_clear();
         shrine
-            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
         let shrine = shrine.close().unwrap();
         let state = AgentState::new(
@@ -867,15 +869,15 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(secret.value().expose_secret_as_bytes(), "value".as_bytes());
+        assert_eq!(&secret.value, "value");
     }
 
     #[tokio::test]
     async fn route_get_secrets() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::new().into_clear();
+        let mut shrine = LocalShrine::default().into_clear();
         shrine
-            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
         let shrine = shrine.close().unwrap();
         let state = AgentState::new(
@@ -904,9 +906,9 @@ mod tests {
     #[tokio::test]
     async fn route_delete_key() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::new().into_clear();
+        let mut shrine = LocalShrine::default().into_clear();
         shrine
-            .set("key", SecretBytes::from("value".as_bytes()), Mode::Text)
+            .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
         let shrine = shrine.close().unwrap();
         let state = AgentState::new(
@@ -940,7 +942,7 @@ mod tests {
     #[tokio::test]
     async fn route_set_key() {
         let (tx, _) = channel::<()>();
-        let shrine = LocalShrine::new().into_clear().close().unwrap();
+        let shrine = LocalShrine::default().into_clear().close().unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
             tx,

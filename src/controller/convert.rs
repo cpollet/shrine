@@ -21,7 +21,7 @@ where
         return Ok(());
     }
 
-    let new_shrine = LocalShrine::new().with_path(path.as_ref().to_path_buf());
+    let new_shrine = LocalShrine::default().with_path(path.as_ref().to_path_buf());
     let mut new_shrine = match encryption {
         Some(EncryptionAlgorithm::Plain) => OpenShrine::LocalClear(new_shrine.into_clear()),
         _ => {

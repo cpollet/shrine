@@ -26,9 +26,11 @@ where
         ));
     }
 
-    let shrine = LocalShrine::new();
+    let shrine = LocalShrine::default();
     let shrine = shrine.with_path(path.as_ref().to_path_buf());
+    // shrine.with_serialization_format(SerializationFormat::Bson);
     // shrine.with_serialization_format(SerializationFormat::Json);
+    let uuid = shrine.uuid();
     let shrine = match encryption {
         Some(EncryptionAlgorithm::Plain) => OpenShrine::LocalClear(shrine.into_clear()),
         _ => {
@@ -53,7 +55,11 @@ where
         ClosedShrine::Remote(_) => panic!("local shrine cannot become a remote shrine"),
     };
 
-    print!("Initialized new shrine in `{}`", path.as_ref().display());
+    print!(
+        "Initialized new shrine with UUID {} in `{}`",
+        uuid,
+        path.as_ref().display()
+    );
 
     if let Some(repository) = repository {
         let repository = repository.open()?;

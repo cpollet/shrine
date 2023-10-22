@@ -1,8 +1,9 @@
+use crate::agent::entities::Secret;
 use crate::agent::{ErrorResponse, GetSecretsRequest, SetPasswordRequest, SetSecretRequest};
 use crate::utils::read_password;
 use crate::values::bytes::SecretBytes;
 use crate::values::key::Key;
-use crate::values::secret::{Mode, Secret};
+use crate::values::secret::{Mode, Secret as SecretVal};
 use crate::Error;
 use async_recursion::async_recursion;
 use hyper::body::HttpBody;
@@ -22,11 +23,11 @@ pub trait Client: Send + Sync {
 
     fn stop(&self) -> Result<(), Error>;
 
-    fn get_key(&self, path: &str, key: &str) -> Result<Secret, Error>;
+    fn get_key(&self, path: &str, key: &str) -> Result<SecretVal, Error>;
 
     fn set_key(&self, path: &str, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error>;
 
-    fn delete_key(&self, path: &str, key: &str) -> Result<Vec<Secret>, Error>;
+    fn delete_key(&self, path: &str, key: &str) -> Result<Vec<SecretVal>, Error>;
 
     fn ls(&self, path: &str, regexp: Option<&str>) -> Result<Vec<Key>, Error>;
 
@@ -240,12 +241,14 @@ where
         self.rt.block_on(self.delete::<Empty>("/")).map(|_| ())
     }
 
-    fn get_key(&self, path: &str, key: &str) -> Result<Secret, Error> {
-        self.rt.block_on(self.get::<Secret>(&format!(
-            "/keys/{}/{}",
-            urlencoding::encode(path),
-            urlencoding::encode(key)
-        )))
+    fn get_key(&self, path: &str, key: &str) -> Result<SecretVal, Error> {
+        self.rt
+            .block_on(self.get::<Secret>(&format!(
+                "/keys/{}/{}",
+                urlencoding::encode(path),
+                urlencoding::encode(key)
+            )))
+            .map(SecretVal::from)
     }
 
     fn set_key(&self, path: &str, key: &str, value: SecretBytes, mode: Mode) -> Result<(), Error> {
@@ -264,12 +267,14 @@ where
             .map(|_| ())
     }
 
-    fn delete_key(&self, path: &str, key: &str) -> Result<Vec<Secret>, Error> {
-        self.rt.block_on(self.delete::<Vec<Secret>>(&format!(
-            "/keys/{}/{}",
-            urlencoding::encode(path),
-            urlencoding::encode(key)
-        )))
+    fn delete_key(&self, path: &str, key: &str) -> Result<Vec<SecretVal>, Error> {
+        self.rt
+            .block_on(self.delete::<Vec<Secret>>(&format!(
+                "/keys/{}/{}",
+                urlencoding::encode(path),
+                urlencoding::encode(key)
+            )))
+            .map(|v| v.into_iter().map(SecretVal::from).collect())
     }
 
     fn ls(&self, path: &str, regexp: Option<&str>) -> Result<Vec<Key>, Error> {
@@ -440,13 +445,14 @@ pub mod mock {
             unimplemented!()
         }
 
-        fn get_key(&self, path: &str, key: &str) -> Result<Secret, Error> {
+        fn get_key(&self, path: &str, key: &str) -> Result<SecretVal, Error> {
             self.get_keys
                 .lock()
                 .unwrap()
                 .borrow_mut()
                 .remove(&(path.to_string(), key.to_string()))
                 .expect(&format!("unexpected get_key(\"{}\", \"{}\")", path, key))
+                .map(SecretVal::from)
         }
 
         fn set_key(
@@ -472,13 +478,14 @@ pub mod mock {
                 ))
         }
 
-        fn delete_key(&self, path: &str, key: &str) -> Result<Vec<Secret>, Error> {
+        fn delete_key(&self, path: &str, key: &str) -> Result<Vec<SecretVal>, Error> {
             self.delete_key
                 .lock()
                 .unwrap()
                 .borrow_mut()
                 .remove(&(path.to_string(), key.to_string()))
                 .expect(&format!("unexpected delete_key(\"{}\", \"{}\")", path, key))
+                .map(|v| v.into_iter().map(SecretVal::from).collect())
         }
 
         fn ls(&self, path: &str, regexp: Option<&str>) -> Result<Vec<Key>, Error> {
@@ -527,7 +534,7 @@ mod tests {
                 r#"
                 {
                     "value": "c2VjcmV0",
-                    "mode": "Text",
+                    "mode": "Binary",
                     "created_by": "cpollet@localhost",
                     "created_at": "2023-06-20T17:51:11.786655084Z"
                 }
@@ -582,7 +589,7 @@ mod tests {
             then.status(200).body(
                 r#"
                 [{
-                    "value": "c2VjcmV0",
+                    "value": "secret",
                     "mode": "Text",
                     "created_by": "cpollet@localhost",
                     "created_at": "2023-06-20T17:51:11.786655084Z"

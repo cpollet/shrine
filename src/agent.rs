@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 pub mod client;
+pub mod entities;
 #[cfg(unix)]
 pub mod server;
 
