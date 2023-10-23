@@ -173,21 +173,22 @@ impl<E, L> LocalShrine<Closed, E, L> {
     }
 }
 
-impl<E, L> Clone for LocalShrine<Closed, E, L>
-where
-    E: Clone,
-    L: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            uuid: self.uuid,
-            payload: self.payload.clone(),
-            encryption: self.encryption.clone(),
-            format: self.format.clone(),
-            location: self.location.clone(),
-        }
-    }
-}
+// #[cfg(test)]
+// impl<E, L> Clone for LocalShrine<Closed, E, L>
+// where
+//     E: Clone,
+//     L: Clone,
+// {
+//     fn clone(&self) -> Self {
+//         Self {
+//             uuid: self.uuid,
+//             payload: self.payload.clone(),
+//             encryption: self.encryption.clone(),
+//             format: self.format.clone(),
+//             location: self.location.clone(),
+//         }
+//     }
+// }
 
 impl LocalShrine<Closed, Clear, PathBuf> {
     pub fn write_file(&self) -> Result<(), Error> {

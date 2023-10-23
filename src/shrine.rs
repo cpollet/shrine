@@ -49,7 +49,7 @@ impl<L> ClosedShrine<L> {
                 s.open(password_provider(uuid)).map(OpenShrine::LocalAes)?
             }
             ClosedShrine::Remote(s) => {
-                // todo we probably want to send the password to the agent
+                // todo we may want to send the password to the agent?
                 OpenShrine::Remote(s)
             }
         })
@@ -174,7 +174,7 @@ impl OpenShrine<PathBuf> {
         match self {
             OpenShrine::LocalClear(_) => Repository::new(self),
             OpenShrine::LocalAes(_) => Repository::new(self),
-            OpenShrine::Remote(_) => None,
+            OpenShrine::Remote(_) => Repository::new(self),
         }
     }
 }

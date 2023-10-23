@@ -27,7 +27,7 @@ pub fn set(mut shrine: OpenShrine<PathBuf>, key: &str, value: Input) -> Result<(
 }
 
 pub fn get<L>(shrine: &OpenShrine<L>, key: &str) -> Result<(), Error> {
-    let secret = shrine.get(key);
+    let secret = shrine.get(&format!(".{key}"));
     let _ = stdout().write_all(secret.unwrap().value().expose_secret_as_bytes());
     Ok(())
 }

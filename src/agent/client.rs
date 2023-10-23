@@ -8,6 +8,7 @@ use crate::Error;
 use async_recursion::async_recursion;
 use hyper::body::HttpBody;
 use hyper::client::connect::Connect;
+#[cfg(test)]
 use hyper::client::HttpConnector;
 use hyper::{http, Body, Method, Request};
 use hyperlocal::{UnixClientExt, UnixConnector, Uri};
@@ -86,11 +87,13 @@ impl HttpClient<SocketClient> {
     }
 }
 
+#[cfg(test)]
 pub struct TcpClient {
     host: String,
     client: hyper::Client<HttpConnector>,
 }
 
+#[cfg(test)]
 impl ClientConnector for TcpClient {
     type H = HttpConnector;
 
@@ -103,6 +106,7 @@ impl ClientConnector for TcpClient {
     }
 }
 
+#[cfg(test)]
 impl HttpClient<TcpClient> {
     pub fn new(host: String) -> Self {
         Self {

@@ -47,13 +47,19 @@ where
 
     shrine.mv(&mut new_shrine);
 
+    let repository = new_shrine.repository();
+
     match new_shrine.close()? {
         ClosedShrine::LocalClear(s) => s.write_file()?,
         ClosedShrine::LocalAes(s) => s.write_file()?,
         ClosedShrine::Remote(_) => {}
     }
 
-    // todo git
+    if let Some(repository) = repository {
+        if repository.commit_auto() {
+            repository.open()?.create_commit("Update shrine")?;
+        }
+    }
 
     Ok(())
 }

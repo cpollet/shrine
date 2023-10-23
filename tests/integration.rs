@@ -1,7 +1,7 @@
 use predicates::str::is_match;
-use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::{env, fs};
 use tempfile::TempDir;
 
 #[test]
@@ -15,7 +15,7 @@ fn init() {
         .assert()
         .success()
         .stdout(is_match(
-            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`\\n",
+            format!("Initialized new shrine with UUID [a-f0-9]{{8}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{12}} in `{}/shrine`\\n", folder.path().display()),
         ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
@@ -24,7 +24,10 @@ fn init() {
         .args(vec!["--password", "p", "init"])
         .assert()
         .failure()
-        .stderr("Shrine file `./shrine` already exists\n");
+        .stderr(format!(
+            "Shrine file `{}/shrine` already exists\n",
+            folder.path().display()
+        ));
 }
 
 #[test]
@@ -40,7 +43,7 @@ fn init_other_folder() {
         .assert()
         .success()
         .stdout(is_match(
-            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `other/shrine`\\n",
+            format!("Initialized new shrine with UUID [a-f0-9]{{8}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{12}} in `{}/other/shrine`\\n", folder.path().display()),
         ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
@@ -49,7 +52,10 @@ fn init_other_folder() {
         .args(vec!["--path", "other", "--password", "p", "init"])
         .assert()
         .failure()
-        .stderr("Shrine file `other/shrine` already exists\n");
+        .stderr(format!(
+            "Shrine file `{}/other/shrine` already exists\n",
+            folder.path().display()
+        ));
 }
 
 #[test]
@@ -242,7 +248,7 @@ fn create_shrine(pwd: &str) -> TempDir {
         .assert()
         .success()
         .stdout(is_match(
-            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`\n"
+            format!("Initialized new shrine with UUID [a-f0-9]{{8}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{12}} in `{}/shrine`\\n", folder.path().display())
         ).unwrap());
     folder
 }
@@ -258,7 +264,7 @@ fn git() {
         .assert()
         .success()
         .stdout(is_match(
-            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`; git commit [a-f0-9]{40} in .\\n",
+            format!("Initialized new shrine with UUID [a-f0-9]{{8}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{12}} in `{}/shrine`; git commit [a-f0-9]{{40}} in {}\\n", folder.path().display(), folder.path().display()),
         ).unwrap());
 
     assert_cmd::Command::new("git")
@@ -280,7 +286,7 @@ fn git_disable_auto_commit() {
         .assert()
         .success()
         .stdout(is_match(
-            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`; git commit [a-f0-9]{40} in .\\n",
+            format!("Initialized new shrine with UUID [a-f0-9]{{8}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{12}} in `{}/shrine`; git commit [a-f0-9]{{40}} in {}\\n", folder.path().display(),  folder.path().display()),
         ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
@@ -324,7 +330,7 @@ fn git_then_disable_git() {
         .assert()
         .success()
         .stdout(is_match(
-            "Initialized new shrine with UUID [a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12} in `./shrine`; git commit [a-f0-9]{40} in .\\n",
+            format!("Initialized new shrine with UUID [a-f0-9]{{8}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{4}}-[a-f0-9]{{12}} in `{}/shrine`; git commit [a-f0-9]{{40}} in {}\\n", folder.path().display(), folder.path().display()),
         ).unwrap());
 
     assert_cmd::Command::cargo_bin("shrine")
@@ -358,36 +364,50 @@ fn git_then_disable_git() {
 
 #[test]
 fn info_format_v0() {
+    let folder = env::current_dir().unwrap();
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
-        .args(vec!["--path",  "test-data/v0-bson-aes", "info"])
+        .args(vec!["--path", "test-data/v0-bson-aes", "info"])
         .assert()
         .success()
-        .stdout(r#"File:          test-data/v0-bson-aes/shrine
+        .stdout(format!(
+            r#"File:          {}/test-data/v0-bson-aes/shrine
 Version:       0
 UUID:          70f61568-eaae-a085-cd47-49650e58df08
 Serialization: BSON
 Encryption:    AES-GCM-SIV with 256-bits key
-"#);
+"#,
+            folder.display()
+        ));
 
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
-        .args(vec!["--path",  "test-data/v0-bson-clear", "info"])
+        .args(vec!["--path", "test-data/v0-bson-clear", "info"])
         .assert()
         .success()
-        .stdout(r#"File:          test-data/v0-bson-clear/shrine
+        .stdout(format!(
+            r#"File:          {}/test-data/v0-bson-clear/shrine
 Version:       0
 UUID:          920e25c6-eced-53bd-da44-914201a8fba7
 Serialization: BSON
 Encryption:    Not encrypted
-"#);
+"#,
+            folder.display()
+        ));
 }
 
 #[test]
 fn get_format_v0() {
     assert_cmd::Command::cargo_bin("shrine")
         .unwrap()
-        .args(vec!["--path", "test-data/v0-bson-aes", "--password", "pwd", "get", "key"])
+        .args(vec![
+            "--path",
+            "test-data/v0-bson-aes",
+            "--password",
+            "pwd",
+            "get",
+            "key",
+        ])
         .assert()
         .success()
         .stdout("value");

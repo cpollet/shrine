@@ -16,12 +16,12 @@ use shrine::values::bytes::SecretBytes;
 use shrine::values::password::ShrinePassword;
 use shrine::values::secret::Mode;
 use shrine::Error;
-use std::env;
 use std::io::stdout;
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::{env, fs};
 
-static SHRINE_FILENAME: &str = "shrine";
+static SHRINE_FILENAME: &str = "shrine"; // todo custom filename
 
 #[derive(Clone, Parser)]
 #[command(author, version, about, long_about = None, arg_required_else_help = true)]
@@ -282,12 +282,12 @@ fn exec(cli: Args) -> Result<(), Error> {
     };
 
     let path = {
-        let mut path = cli
+        let path = cli
             .path
             .unwrap_or_else(|| PathBuf::from(env::var("SHRINE_PATH").unwrap_or(".".to_string())));
+        let mut path = fs::canonicalize(path.clone()).unwrap();
         path.push(SHRINE_FILENAME);
         path
-        // todo fs::canonicalize(path).unwrap()
     };
 
     let shrine = match shrine::shrine::new(Box::new(client), &path) {
@@ -381,7 +381,7 @@ fn exec(cli: Args) -> Result<(), Error> {
                     value: value.map(SecretBytes::from),
                 },
             ),
-            Some(ConfigCommands::Get { key: _key }) => todo!(), //config::get(shrine_provider, &key),
+            Some(ConfigCommands::Get { key }) => config::get(&shrine, &key),
             _ => panic!(),
         },
         Some(Commands::Init { .. }) => {

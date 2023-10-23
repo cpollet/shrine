@@ -5,7 +5,6 @@ use crate::shrine::local::LoadedShrine;
 use crate::shrine::{ClosedShrine, OpenShrine};
 use crate::values::key::Key;
 use crate::values::password::ShrinePassword;
-use crate::values::secret::Secret as SecretVal;
 use crate::Error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -18,7 +17,6 @@ use hyperlocal::UnixServerExt;
 use regex::Regex;
 use std::collections::HashMap;
 use std::fs::remove_file;
-use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -87,20 +85,19 @@ pub async fn serve(pidfile: String, socketfile: String) {
     scheduler.shutdown().await.unwrap();
 }
 
-fn router<P, L>() -> Router<AgentState<P, L>>
+fn router<P>() -> Router<AgentState<P>>
 where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
+    P: ShrineProvider,
 {
     Router::new()
-        .route("/", delete(delete_agent))
-        .route("/pid", get(get_pid))
-        .route("/passwords", put(put_password))
-        .route("/passwords", delete(delete_passwords))
-        .route("/keys/:file", get(get_keys))
-        .route("/keys/:file/:key", get(get_key))
-        .route("/keys/:file/:key", put(put_key))
-        .route("/keys/:file/:key", delete(delete_key))
+        .route("/", delete(handlers::delete_agent))
+        .route("/pid", get(handlers::get_pid))
+        .route("/passwords", put(handlers::put_password))
+        .route("/passwords", delete(handlers::delete_passwords))
+        .route("/keys/:file", get(handlers::get_keys))
+        .route("/keys/:file/:key", get(handlers::get_key))
+        .route("/keys/:file/:key", put(handlers::put_key))
+        .route("/keys/:file/:key", delete(handlers::delete_key))
 }
 
 async fn shutdown(shutdown_http_signal_rx: Receiver<()>) {
@@ -128,282 +125,273 @@ async fn shutdown(shutdown_http_signal_rx: Receiver<()>) {
     info!("Shut down HTTP server");
 }
 
-async fn delete_agent<P, L>(State(state): State<AgentState<P, L>>)
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("delete_agent");
-    let channel = channel::<()>();
+mod handlers {
+    use super::*;
 
-    let mut sig = state.http_shutdown_tx.lock().unwrap();
-
-    let _ = mem::replace(&mut *sig, channel.0).send(());
-}
-
-async fn get_pid() -> String {
-    info!("get_pid");
-    serde_json::to_string(&process::id()).unwrap()
-}
-
-async fn put_password<P, L>(
-    State(state): State<AgentState<P, L>>,
-    Json(set_password_request): Json<SetPasswordRequest>,
-) where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("set_password");
-    state.set_password(set_password_request.uuid, set_password_request.password);
-}
-
-async fn delete_passwords<P, L>(State(state): State<AgentState<P, L>>)
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("delete_passwords");
-    state.delete_passwords();
-}
-
-async fn get_keys<P, L>(
-    State(state): State<AgentState<P, L>>,
-    Path(path): Path<String>,
-    Query(params): Query<GetSecretsRequest>,
-) -> Response
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("get_keys from file `{}` ({:?})", path, params);
-
-    let regex = match params
-        .regexp
-        .as_ref()
-        .map(|p| Regex::new(p.as_ref()))
-        .transpose()
-        .map_err(Error::InvalidPattern)
+    pub(super) async fn delete_agent<P>(State(state): State<AgentState<P>>)
+    where
+        P: ShrineProvider,
     {
-        Err(e) => return ErrorResponse::Regex(e.to_string()).into(),
-        Ok(regex) => regex,
-    };
+        info!("delete_agent");
+        let channel = channel::<()>();
 
-    let shrine = match open_shrine::<P, L>(&state, &path) {
-        Ok(shrine) => shrine,
-        Err(response) => return response,
-    };
+        let mut sig = state.http_shutdown_tx.lock().unwrap();
 
-    let mut keys = shrine
-        .keys()
-        .into_iter()
-        .filter(|k| regex.as_ref().map(|r| r.is_match(k)).unwrap_or(true))
-        .collect::<Vec<String>>();
-    keys.sort_unstable();
-
-    let secrets = keys
-        .into_iter()
-        .map(|k| (shrine.get(&k).expect("must be there"), k))
-        .collect::<Vec<(&SecretVal, String)>>();
-
-    let secrets = secrets
-        .into_iter()
-        .map(|(s, k)| (Key::from((k, s))))
-        .collect::<Vec<Key>>();
-
-    Json(secrets).into_response()
-}
-
-async fn get_key<P, L>(
-    State(state): State<AgentState<P, L>>,
-    Path((path, key)): Path<(String, String)>,
-) -> Response
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("get_key `{}` from file `{}`", key, path);
-
-    let shrine = match open_shrine::<P, L>(&state, &path) {
-        Ok(shrine) => shrine,
-        Err(response) => return response,
-    };
-
-    match shrine.get(&key) {
-        Err(_) => ErrorResponse::KeyNotFound {
-            file: path.clone(),
-            key,
-        }
-        .into(),
-        Ok(secret) => Json(Secret::from(secret)).into_response(),
-    }
-}
-
-fn open_shrine<P, L>(state: &AgentState<P, L>, path: &str) -> Result<OpenShrine<L>, Response>
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    let shrine = match state.shrine_provider.load_from_path(path) {
-        Err(Error::FileNotFound(_)) => {
-            return Err(ErrorResponse::FileNotFound(path.to_string()).into())
-        }
-        Err(Error::IoRead(_)) => return Err(ErrorResponse::Read(path.to_string()).into()),
-        Err(_) => return Err(ErrorResponse::Io(path.to_string()).into()),
-        Ok(shrine) => shrine,
-    };
-
-    let uuid = shrine.uuid();
-
-    let shrine = match shrine {
-        ClosedShrine::LocalClear(s) => OpenShrine::LocalClear(
-            s.open()
-                .map_err(|_| ErrorResponse::Read(path.to_string()))?,
-        ),
-        ClosedShrine::LocalAes(s) => {
-            let password = match state.get_password(uuid) {
-                None => return Err(ErrorResponse::Unauthorized(uuid).into()),
-                Some(p) => p,
-            };
-            OpenShrine::LocalAes(
-                s.open(password)
-                    .map_err(|_| ErrorResponse::Forbidden(uuid))?,
-            )
-        }
-        ClosedShrine::Remote(_) => unreachable!("Agent cannot access remote shrines"),
-    };
-
-    Ok(shrine)
-}
-
-async fn put_key<P, L>(
-    State(state): State<AgentState<P, L>>,
-    Path((path, key)): Path<(String, String)>,
-    Json(request): Json<SetSecretRequest>,
-) -> Response
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("set_key `{}` on file `{}`", key, path);
-
-    let mut shrine = match open_shrine::<P, L>(&state, &path) {
-        Ok(s) => s,
-        Err(response) => return response,
-    };
-
-    // todo repository
-    // let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
-
-    match shrine.set(&key, request.secret, request.mode) {
-        Ok(_) => {}
-        Err(Error::KeyNotFound(key)) => {
-            return ErrorResponse::KeyNotFound { file: path, key }.into()
-        }
-        Err(_) => return ErrorResponse::Write(path).into(),
+        let _ = mem::replace(&mut *sig, channel.0).send(());
     }
 
-    let shrine = match shrine.close() {
-        Ok(shrine) => shrine,
-        Err(_) => return ErrorResponse::Write(path).into(),
-    };
-
-    if state.shrine_provider.save_to_path(&path, shrine).is_err() {
-        return ErrorResponse::Write(path).into();
+    pub(super) async fn get_pid() -> String {
+        info!("get_pid");
+        serde_json::to_string(&process::id()).unwrap()
     }
 
-    // todo repository
-    // if let Some(repository) = repository {
-    //     if repository.commit_auto()
-    //         && repository
-    //             .open()
-    //             .and_then(|r| r.create_commit("Update shrine"))
-    //             .is_err()
-    //     {
-    //         return ErrorResponse::Write(path).into();
-    //     }
-    // }
-
-    Response::builder()
-        .status(StatusCode::NO_CONTENT)
-        .body(Default::default())
-        .unwrap()
-}
-
-async fn delete_key<P, L>(
-    State(state): State<AgentState<P, L>>,
-    Path((path, key)): Path<(String, String)>,
-) -> Response
-where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
-{
-    info!("delete_key `{}` on file `{}`", key, path);
-
-    let mut shrine = match open_shrine::<P, L>(&state, &path) {
-        Ok(s) => s,
-        Err(response) => return response,
-    };
-
-    // todo repository
-    // let repository = Repository::new(PathBuf::from_str(&path).unwrap(), &shrine);
-
-    match shrine.rm(&key) {
-        Ok(true) => {},
-        Ok(false) => return ErrorResponse::KeyNotFound { file: path, key }.into(),
-        Err(Error::UnsupportedOldFormat(v)) => return ErrorResponse::Write(format!("Format {v} is not supported anymore")).into(),
-        _ => return ErrorResponse::Write(path).into(),
-    };
-
-    let shrine = match shrine.close() {
-        Ok(shrine) => shrine,
-        Err(_) => return ErrorResponse::Write(path).into(),
-    };
-    if state.shrine_provider.save_to_path(&path, shrine).is_err() {
-        return ErrorResponse::Write(path).into();
+    pub(super) async fn put_password<P>(
+        State(state): State<AgentState<P>>,
+        Json(set_password_request): Json<SetPasswordRequest>,
+    ) where
+        P: ShrineProvider,
+    {
+        info!("set_password");
+        state.set_password(set_password_request.uuid, set_password_request.password);
     }
 
-    // todo repository
-    // if let Some(repository) = repository {
-    //     if repository.commit_auto()
-    //         && repository
-    //             .open()
-    //             .and_then(|r| r.create_commit("Update shrine"))
-    //             .is_err()
-    //     {
-    //         return ErrorResponse::Write(path).into();
-    //     }
-    // }
+    pub(super) async fn delete_passwords<P>(State(state): State<AgentState<P>>)
+    where
+        P: ShrineProvider,
+    {
+        info!("delete_passwords");
+        state.delete_passwords();
+    }
 
-    Response::builder()
-        .status(StatusCode::NO_CONTENT)
-        .body(Default::default())
-        .unwrap()
+    pub(super) async fn get_keys<P>(
+        State(state): State<AgentState<P>>,
+        Path(path): Path<String>,
+        Query(params): Query<GetSecretsRequest>,
+    ) -> Response
+    where
+        P: ShrineProvider,
+    {
+        info!("get_keys from file `{}` ({:?})", path, params);
+
+        let regex = match params
+            .regexp
+            .as_ref()
+            .map(|p| Regex::new(p.as_ref()))
+            .transpose()
+            .map_err(Error::InvalidPattern)
+        {
+            Err(e) => return ErrorResponse::Regex(e.to_string()).into(),
+            Ok(regex) => regex,
+        };
+
+        let shrine = match open_shrine::<P>(&state, &path) {
+            Ok(shrine) => shrine,
+            Err(response) => return response,
+        };
+
+        let mut keys = shrine
+            .keys()
+            .into_iter()
+            .filter(|k| regex.as_ref().map(|r| r.is_match(k)).unwrap_or(true))
+            .collect::<Vec<String>>();
+        keys.sort_unstable();
+
+        let secrets = keys
+            .into_iter()
+            .map(|k| (shrine.get(&k).expect("must be there"), k))
+            .collect::<Vec<(&crate::values::secret::Secret, String)>>();
+
+        let secrets = secrets
+            .into_iter()
+            .map(|(s, k)| (Key::from((k, s))))
+            .collect::<Vec<Key>>();
+
+        Json(secrets).into_response()
+    }
+
+    pub(super) async fn get_key<P>(
+        State(state): State<AgentState<P>>,
+        Path((path, key)): Path<(String, String)>,
+    ) -> Response
+    where
+        P: ShrineProvider,
+    {
+        info!("get_key `{}` from file `{}`", key, path);
+
+        let shrine = match open_shrine::<P>(&state, &path) {
+            Ok(shrine) => shrine,
+            Err(response) => return response,
+        };
+
+        match shrine.get(&key) {
+            Err(_) => ErrorResponse::KeyNotFound {
+                file: path.clone(),
+                key,
+            }
+            .into(),
+            Ok(secret) => Json(Secret::from(secret)).into_response(),
+        }
+    }
+
+    fn open_shrine<P>(state: &AgentState<P>, path: &str) -> Result<OpenShrine<PathBuf>, Response>
+    where
+        P: ShrineProvider,
+    {
+        let shrine = match state.shrine_provider.load_from_path(path) {
+            Err(Error::FileNotFound(_)) => {
+                return Err(ErrorResponse::FileNotFound(path.to_string()).into())
+            }
+            Err(Error::IoRead(_)) => return Err(ErrorResponse::Read(path.to_string()).into()),
+            Err(_) => return Err(ErrorResponse::Io(path.to_string()).into()),
+            Ok(shrine) => shrine,
+        };
+
+        let uuid = shrine.uuid();
+
+        let shrine = match shrine {
+            ClosedShrine::LocalClear(s) => OpenShrine::LocalClear(
+                s.open()
+                    .map_err(|_| ErrorResponse::Read(path.to_string()))?,
+            ),
+            ClosedShrine::LocalAes(s) => {
+                let password = match state.get_password(uuid) {
+                    None => return Err(ErrorResponse::Unauthorized(uuid).into()),
+                    Some(p) => p,
+                };
+                OpenShrine::LocalAes(
+                    s.open(password)
+                        .map_err(|_| ErrorResponse::Forbidden(uuid))?,
+                )
+            }
+            ClosedShrine::Remote(_) => unreachable!("Agent cannot access remote shrines"),
+        };
+
+        Ok(shrine)
+    }
+
+    pub(super) async fn put_key<P>(
+        State(state): State<AgentState<P>>,
+        Path((path, key)): Path<(String, String)>,
+        Json(request): Json<SetSecretRequest>,
+    ) -> Response
+    where
+        P: ShrineProvider,
+    {
+        info!("set_key `{}` on file `{}`", key, path);
+
+        let mut shrine = match open_shrine::<P>(&state, &path) {
+            Ok(s) => s,
+            Err(response) => return response,
+        };
+
+        let repository = shrine.repository();
+
+        match shrine.set(&key, request.secret, request.mode) {
+            Ok(_) => {}
+            Err(Error::KeyNotFound(key)) => {
+                return ErrorResponse::KeyNotFound { file: path, key }.into()
+            }
+            Err(_) => return ErrorResponse::Write(path).into(),
+        }
+
+        let shrine = match shrine.close() {
+            Ok(shrine) => shrine,
+            Err(_) => return ErrorResponse::Write(path).into(),
+        };
+
+        if state.shrine_provider.save(shrine).is_err() {
+            return ErrorResponse::Write(path).into();
+        }
+
+        if let Some(repository) = repository {
+            if repository.commit_auto()
+                && repository
+                    .open()
+                    .and_then(|r| r.create_commit("Update shrine"))
+                    .is_err()
+            {
+                return ErrorResponse::Write(path).into();
+            }
+        }
+
+        Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body(Default::default())
+            .unwrap()
+    }
+
+    pub(super) async fn delete_key<P>(
+        State(state): State<AgentState<P>>,
+        Path((path, key)): Path<(String, String)>,
+    ) -> Response
+    where
+        P: ShrineProvider,
+    {
+        info!("delete_key `{}` on file `{}`", key, path);
+
+        let mut shrine = match open_shrine::<P>(&state, &path) {
+            Ok(s) => s,
+            Err(response) => return response,
+        };
+
+        let repository = shrine.repository();
+
+        match shrine.rm(&key) {
+            Ok(true) => {}
+            Ok(false) => return ErrorResponse::KeyNotFound { file: path, key }.into(),
+            Err(Error::UnsupportedOldFormat(v)) => {
+                return ErrorResponse::Write(format!("Format {v} is not supported anymore")).into()
+            }
+            _ => return ErrorResponse::Write(path).into(),
+        };
+
+        let shrine = match shrine.close() {
+            Ok(shrine) => shrine,
+            Err(_) => return ErrorResponse::Write(path).into(),
+        };
+
+        if state.shrine_provider.save(shrine).is_err() {
+            return ErrorResponse::Write(path).into();
+        }
+
+        if let Some(repository) = repository {
+            if repository.commit_auto()
+                && repository
+                    .open()
+                    .and_then(|r| r.create_commit("Update shrine"))
+                    .is_err()
+            {
+                return ErrorResponse::Write(path).into();
+            }
+        }
+
+        Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body(Default::default())
+            .unwrap()
+    }
 }
 
 #[derive(Clone)]
-struct AgentState<P, L>
+struct AgentState<P>
 where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
+    P: ShrineProvider,
 {
     shrine_provider: P,
     http_shutdown_tx: Arc<Mutex<Sender<()>>>,
     passwords: Arc<Mutex<HashMap<Uuid, ATimePassword>>>,
-    location: PhantomData<L>,
 }
 type ATimePassword = (DateTime<Utc>, ShrinePassword);
 
-impl<P, L> AgentState<P, L>
+impl<P> AgentState<P>
 where
-    L: Clone + Send + Sync + 'static,
-    P: ShrineProvider<L>,
+    P: ShrineProvider,
 {
     fn new(shrine_provider: P, http_shutdown_tx: Sender<()>) -> Self {
         Self {
             shrine_provider,
             http_shutdown_tx: Arc::new(Mutex::new(http_shutdown_tx)),
             passwords: Arc::new(Mutex::new(Default::default())),
-            location: PhantomData,
         }
     }
 
@@ -438,23 +426,18 @@ where
     }
 }
 
-trait ShrineProvider<L>: Clone + Send + Sync + 'static
-where
-    L: Clone + Send + Sync,
-{
-    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine<L>, Error>
+trait ShrineProvider: Clone + Send + Sync + 'static {
+    fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine<PathBuf>, Error>
     where
         P: AsRef<std::path::Path>;
 
-    fn save_to_path<P>(&self, path: P, shrine: ClosedShrine<L>) -> Result<(), Error>
-    where
-        P: AsRef<std::path::Path>;
+    fn save(&self, shrine: ClosedShrine<PathBuf>) -> Result<(), Error>;
 }
 
 #[derive(Clone, Default)]
 struct DefaultShrineProvider {}
 
-impl ShrineProvider<PathBuf> for DefaultShrineProvider {
+impl ShrineProvider for DefaultShrineProvider {
     fn load_from_path<P>(&self, path: P) -> Result<ClosedShrine<PathBuf>, Error>
     where
         P: AsRef<std::path::Path>,
@@ -465,19 +448,19 @@ impl ShrineProvider<PathBuf> for DefaultShrineProvider {
         })
     }
 
-    fn save_to_path<P>(&self, _path: P, _shrine: ClosedShrine<PathBuf>) -> Result<(), Error>
-    where
-        P: AsRef<std::path::Path>,
-    {
-        todo!()
-        //shrine.to_path(path)
+    fn save(&self, shrine: ClosedShrine<PathBuf>) -> Result<(), Error> {
+        match shrine {
+            ClosedShrine::LocalClear(s) => s.write_file(),
+            ClosedShrine::LocalAes(s) => s.write_file(),
+            ClosedShrine::Remote(_) => unreachable!("Agent cannot access remote shrines"),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shrine::local::{LocalShrine, Memory};
+    use crate::shrine::local::LocalShrine;
     use crate::shrine::ClosedShrine;
     use crate::values::bytes::SecretBytes;
     use crate::values::secret::Mode;
@@ -489,29 +472,26 @@ mod tests {
 
     #[derive(Clone)]
     struct MockShrineProvider {
-        shrine: Arc<Mutex<RefCell<Option<ClosedShrine<Memory>>>>>,
+        shrine: Arc<Mutex<RefCell<Option<ClosedShrine<PathBuf>>>>>,
     }
 
     impl MockShrineProvider {
-        fn new(shrine: ClosedShrine<Memory>) -> Self {
+        fn new(shrine: ClosedShrine<PathBuf>) -> Self {
             Self {
                 shrine: Arc::new(Mutex::new(RefCell::new(Some(shrine)))),
             }
         }
     }
 
-    impl ShrineProvider<Memory> for MockShrineProvider {
-        fn load_from_path<P>(&self, _path: P) -> Result<ClosedShrine<Memory>, Error>
+    impl ShrineProvider for MockShrineProvider {
+        fn load_from_path<P>(&self, _path: P) -> Result<ClosedShrine<PathBuf>, Error>
         where
             P: AsRef<std::path::Path>,
         {
             Ok(self.shrine.lock().unwrap().take().unwrap())
         }
 
-        fn save_to_path<P>(&self, _path: P, shrine: ClosedShrine<Memory>) -> Result<(), Error>
-        where
-            P: AsRef<std::path::Path>,
-        {
+        fn save(&self, shrine: ClosedShrine<PathBuf>) -> Result<(), Error> {
             self.shrine.lock().unwrap().replace(Some(shrine));
             Ok(())
         }
@@ -519,8 +499,8 @@ mod tests {
 
     #[tokio::test]
     async fn get_pid() {
-        let pid = super::get_pid().await;
-        assert!(pid != "");
+        let pid = handlers::get_pid().await;
+        assert_ne!(pid, "");
     }
 
     #[tokio::test]
@@ -528,7 +508,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::default().into_clear();
+            let mut shrine = LocalShrine::default()
+                .with_path(PathBuf::new())
+                .into_clear();
             shrine
                 .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
@@ -541,7 +523,7 @@ mod tests {
         ));
 
         let response =
-            super::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
+            handlers::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -564,14 +546,16 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::default().into_clear();
+            let mut shrine = LocalShrine::default()
+                .with_path(PathBuf::new())
+                .into_clear();
             shrine
                 .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
             shrine.close().unwrap()
         };
 
-        let response = super::get_key(
+        let response = handlers::get_key(
             State(AgentState::new(
                 MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
                 tx,
@@ -588,7 +572,7 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::default();
+            let mut shrine = LocalShrine::default().with_path(PathBuf::new());
             shrine
                 .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
@@ -601,7 +585,7 @@ mod tests {
         ));
 
         let response =
-            super::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
+            handlers::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
@@ -610,9 +594,8 @@ mod tests {
     async fn get_password_required_and_set() {
         let (tx, _) = channel::<()>();
 
-        let shrine_password = ShrinePassword::from("password");
         let shrine = {
-            let mut shrine = LocalShrine::default();
+            let mut shrine = LocalShrine::default().with_path(PathBuf::new());
             shrine
                 .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
@@ -626,10 +609,10 @@ mod tests {
             tx,
         ));
 
-        state.set_password(uuid, shrine_password);
+        state.set_password(uuid, ShrinePassword::from("password"));
 
         let response =
-            super::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
+            handlers::get_key(state, Path(("fake_path".to_string(), "key".to_string()))).await;
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -645,7 +628,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::default().into_clear();
+            let mut shrine = LocalShrine::default()
+                .with_path(PathBuf::new())
+                .into_clear();
             shrine
                 .set("key", SecretBytes::from("text"), Mode::Text)
                 .unwrap();
@@ -660,7 +645,7 @@ mod tests {
             tx,
         ));
 
-        let response = super::get_keys(
+        let response = handlers::get_keys(
             state,
             Path("fake_path".to_string()),
             Query(GetSecretsRequest {
@@ -683,7 +668,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::default().into_clear();
+            let mut shrine = LocalShrine::default()
+                .with_path(PathBuf::new())
+                .into_clear();
             shrine
                 .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
@@ -695,7 +682,7 @@ mod tests {
             tx,
         ));
 
-        super::put_key(
+        handlers::put_key(
             state.clone(),
             Path((String::default(), "key".to_string())),
             Json(SetSecretRequest {
@@ -705,7 +692,7 @@ mod tests {
         )
         .await;
 
-        let value = super::get_key(state, Path((String::default(), "key".to_string()))).await;
+        let value = handlers::get_key(state, Path((String::default(), "key".to_string()))).await;
 
         let secret: Secret =
             serde_json::from_slice(value.into_body().data().await.unwrap().unwrap().as_ref())
@@ -719,7 +706,9 @@ mod tests {
         let (tx, _) = channel::<()>();
 
         let shrine = {
-            let mut shrine = LocalShrine::default().into_clear();
+            let mut shrine = LocalShrine::default()
+                .with_path(PathBuf::new())
+                .into_clear();
             shrine
                 .set("key", SecretBytes::from("value"), Mode::Text)
                 .unwrap();
@@ -730,9 +719,9 @@ mod tests {
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
             tx,
         ));
-        super::delete_key(state.clone(), Path((String::default(), "key".to_string()))).await;
+        handlers::delete_key(state.clone(), Path((String::default(), "key".to_string()))).await;
 
-        let value = super::get_key(state, Path((String::default(), "key".to_string()))).await;
+        let value = handlers::get_key(state, Path((String::default(), "key".to_string()))).await;
 
         assert_eq!(value.status(), StatusCode::NOT_FOUND);
     }
@@ -742,7 +731,11 @@ mod tests {
         let (tx, _) = channel::<()>();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(
-                LocalShrine::default().into_clear().close().unwrap(),
+                LocalShrine::default()
+                    .with_path(PathBuf::new())
+                    .into_clear()
+                    .close()
+                    .unwrap(),
             )),
             tx,
         );
@@ -760,6 +753,7 @@ mod tests {
     async fn route_get_key_requires_password() {
         let (tx, _) = channel::<()>();
         let shrine = LocalShrine::default()
+            .with_path(PathBuf::new())
             .close(ShrinePassword::from("password"))
             .unwrap();
         let state = AgentState::new(MockShrineProvider::new(ClosedShrine::LocalAes(shrine)), tx);
@@ -774,19 +768,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn route_put_password_then_get_key_then_delete_password() {
+    async fn route_put_password_then_set_key_then_delete_password() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::default();
+        let mut shrine = LocalShrine::default().with_path(PathBuf::new());
         shrine
             .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
         let shrine = shrine.close(ShrinePassword::from("password")).unwrap();
 
         let uuid = shrine.uuid();
-        let state = AgentState::new(
-            MockShrineProvider::new(ClosedShrine::LocalAes(shrine.clone())),
-            tx,
-        );
+        let state = AgentState::new(MockShrineProvider::new(ClosedShrine::LocalAes(shrine)), tx);
 
         let response = router()
             .with_state(state.clone())
@@ -808,10 +799,21 @@ mod tests {
 
         let response = router()
             .with_state(state.clone())
-            .oneshot(Request::get("/keys/file/key").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::put("/keys/file/key")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_string(&SetSecretRequest {
+                            secret: SecretBytes::from("secret"),
+                            mode: Mode::Text,
+                        })
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
 
         let response = router()
             .with_state(state.clone())
@@ -821,10 +823,12 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
 
         // make sure we have some shrine
-        state
-            .shrine_provider
-            .save_to_path("", ClosedShrine::LocalAes(shrine))
-            .unwrap();
+        // state
+        //     .shrine_provider
+        //     .shrine
+        //     .lock()
+        //     .unwrap()
+        //     .replace(Some(ClosedShrine::LocalAes(shrine)));
 
         let response = router()
             .with_state(state)
@@ -837,7 +841,11 @@ mod tests {
     #[tokio::test]
     async fn route_get_key_not_found() {
         let (tx, _) = channel::<()>();
-        let shrine = LocalShrine::default().into_clear().close().unwrap();
+        let shrine = LocalShrine::default()
+            .with_path(PathBuf::new())
+            .into_clear()
+            .close()
+            .unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
             tx,
@@ -855,7 +863,9 @@ mod tests {
     #[tokio::test]
     async fn route_get_key() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::default().into_clear();
+        let mut shrine = LocalShrine::default()
+            .with_path(PathBuf::new())
+            .into_clear();
         shrine
             .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
@@ -884,7 +894,9 @@ mod tests {
     #[tokio::test]
     async fn route_get_secrets() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::default().into_clear();
+        let mut shrine = LocalShrine::default()
+            .with_path(PathBuf::new())
+            .into_clear();
         shrine
             .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
@@ -915,7 +927,9 @@ mod tests {
     #[tokio::test]
     async fn route_delete_key() {
         let (tx, _) = channel::<()>();
-        let mut shrine = LocalShrine::default().into_clear();
+        let mut shrine = LocalShrine::default()
+            .with_path(PathBuf::new())
+            .into_clear();
         shrine
             .set("key", SecretBytes::from("value"), Mode::Text)
             .unwrap();
@@ -951,7 +965,11 @@ mod tests {
     #[tokio::test]
     async fn route_set_key() {
         let (tx, _) = channel::<()>();
-        let shrine = LocalShrine::default().into_clear().close().unwrap();
+        let shrine = LocalShrine::default()
+            .with_path(PathBuf::new())
+            .into_clear()
+            .close()
+            .unwrap();
         let state = AgentState::new(
             MockShrineProvider::new(ClosedShrine::LocalClear(shrine)),
             tx,

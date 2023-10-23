@@ -161,8 +161,7 @@ impl Repository<Closed> {
 impl Repository<Open> {
     pub fn create_commit(&self, message: &str) -> Result<String, Error> {
         let mut index = self.state.repository.index()?;
-        // todo shrine filename
-        index.add_path(Path::new("shrine"))?;
+        index.add_path(Path::new("shrine"))?; // todo custom filename
 
         index.write()?;
         let oid = index.write_tree()?;
