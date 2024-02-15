@@ -27,7 +27,7 @@ where
     }
 }
 
-impl<'a, D> SerDe<'a, D> for JsonSerDe<D>
+impl<D> SerDe<D> for JsonSerDe<D>
 where
     D: Serialize + for<'d> Deserialize<'d>,
 {

@@ -1,8 +1,4 @@
 use crate::format::Format;
-use crate::serialize::bson::BsonSerDe;
-use crate::serialize::json::JsonSerDe;
-use crate::serialize::message_pack::MessagePackSerDe;
-use crate::serialize::SerDe;
 use crate::shrine::encryption::EncryptionAlgorithm;
 use crate::shrine::holder::node::Node;
 use crate::shrine::holder::Holder;
@@ -43,15 +39,11 @@ impl Format for Format0 {
     }
 
     fn deserialize_secret(&self, bytes: Zeroizing<Vec<u8>>) -> Result<Secrets, Error> {
-        let serializer: Box<dyn SerDe<HolderV0<SecretV0>>> = match self.serialization {
-            SerializationFormat::Bson => Box::new(BsonSerDe::<HolderV0<SecretV0>>::new()),
-            SerializationFormat::Json => Box::new(JsonSerDe::<HolderV0<SecretV0>>::new()),
-            SerializationFormat::MessagePack => {
-                Box::new(MessagePackSerDe::<HolderV0<SecretV0>>::new())
-            }
-        };
+        let holder_v0 = self
+            .serialization
+            .serializer::<HolderV0<SecretV0>>()
+            .deserialize(bytes.as_slice())?;
 
-        let holder_v0 = serializer.deserialize(bytes.as_slice())?;
         let mut holder_last = Holder::<Secret>::new();
 
         for key in holder_v0.secrets.keys() {

@@ -6,9 +6,9 @@ use crate::Error;
 use serde::{Deserialize, Serialize};
 
 /// Serializer / deserializer trait.
-pub trait SerDe<'d, D>
+pub trait SerDe<D>
 where
-    D: Serialize + Deserialize<'d>,
+    D: Serialize + for<'d> Deserialize<'d>,
 {
     fn serialize(&self, data: &D) -> Result<Vec<u8>, Error>;
 

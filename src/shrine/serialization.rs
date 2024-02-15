@@ -2,8 +2,8 @@ use crate::serialize::bson::BsonSerDe;
 use crate::serialize::json::JsonSerDe;
 use crate::serialize::message_pack::MessagePackSerDe;
 use crate::serialize::SerDe;
-use crate::shrine::local::Secrets;
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 /// The serialization format
@@ -19,12 +19,15 @@ pub enum SerializationFormat {
 }
 
 impl SerializationFormat {
-    pub fn serializer(&self) -> Box<dyn SerDe<Secrets>> {
+    pub fn serializer<D>(&self) -> Box<dyn SerDe<D>>
+    where
+        D: Serialize + for<'d> Deserialize<'d> + 'static,
+    {
         match self {
-            SerializationFormat::Bson => Box::new(BsonSerDe::new()),
-            SerializationFormat::Json => Box::new(JsonSerDe::new()),
-            SerializationFormat::MessagePack => Box::new(MessagePackSerDe::new()),
-        }
+            SerializationFormat::Bson => Box::new(BsonSerDe::<D>::new()),
+            SerializationFormat::Json => Box::new(JsonSerDe::<D>::new()),
+            SerializationFormat::MessagePack => Box::new(MessagePackSerDe::<D>::new()),
+           }
     }
 }
 

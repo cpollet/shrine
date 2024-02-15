@@ -29,7 +29,7 @@ where
     }
 }
 
-impl<'a, D> SerDe<'a, D> for BsonSerDe<D>
+impl<D> SerDe<D> for BsonSerDe<D>
 where
     D: Serialize + for<'d> Deserialize<'d>,
 {

@@ -27,7 +27,7 @@ where
     }
 }
 
-impl<'a, D> SerDe<'a, D> for MessagePackSerDe<D>
+impl<D> SerDe<D> for MessagePackSerDe<D>
 where
     D: Serialize + for<'d> Deserialize<'d>,
 {
